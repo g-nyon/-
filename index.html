@@ -3,36 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voxel Quest Clone</title>
+    <title>Voxel Quest - Advance Mode</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Arial', sans-serif; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         #ui {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            color: white;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            pointer-events: none;
+            position: absolute; top: 20px; left: 20px; color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5); pointer-events: none;
         }
         .instruction {
-            position: absolute;
-            bottom: 20px;
-            width: 100%;
-            text-align: center;
-            color: white;
-            font-weight: bold;
-            text-shadow: 1px 1px 2px black;
+            position: absolute; bottom: 20px; width: 100%; text-align: center;
+            color: white; font-weight: bold; text-shadow: 1px 1px 2px black;
         }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h1>Voxel Quest Clone</h1>
-        <p>仲間: <span id="allyCount">1</span></p>
-        <p>敵を倒して進もう！</p>
+        <h1>Voxel Quest</h1>
+        <p>仲間: <span id="allyCount">1</span> | 進行距離: <span id="distance">0</span>m</p>
     </div>
-    <div class="instruction">画面をクリックして仲間を召喚！</div>
+    <div class="instruction">タップで仲間を召喚 ＆ 全員で前進！</div>
 
     <script type="importmap">
         {
@@ -45,7 +35,7 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- 基本設定 ---
+        // --- Scene Setup ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -54,148 +44,96 @@
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // --- ライト ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
         scene.add(ambientLight);
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1);
-        sunLight.position.set(10, 20, 10);
+        const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        sunLight.position.set(5, 20, 10);
         sunLight.castShadow = true;
         scene.add(sunLight);
 
-        // --- 地面 ---
-        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        // Ground (Extremely long for progression)
+        const floorGeo = new THREE.PlaneGeometry(50, 2000);
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x7cfc00 });
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
+        floor.position.z = -900; 
         floor.receiveShadow = true;
         scene.add(floor);
 
-        // --- キャラクタークラス ---
+        // --- Character Class ---
         class Character {
             constructor(color, x, z, isEnemy = false) {
                 this.group = new THREE.Group();
                 this.isEnemy = isEnemy;
-                this.speed = isEnemy ? 0.03 : 0.05;
+                this.speed = isEnemy ? 0.04 : 0.06;
                 this.hp = 100;
+                this.baseY = 0.5;
 
-                // ボディー (ボクセル風)
-                const bodyGeo = new THREE.BoxGeometry(1, 1, 1);
-                const bodyMat = new THREE.MeshStandardMaterial({ color: color });
-                this.body = new THREE.Mesh(bodyGeo, bodyMat);
-                this.body.position.y = 0.5;
-                this.body.castShadow = true;
-                this.group.add(this.body);
+                const body = new THREE.Mesh(
+                    new THREE.BoxGeometry(1, 1, 1),
+                    new THREE.MeshStandardMaterial({ color: color })
+                );
+                body.position.y = this.baseY;
+                body.castShadow = true;
+                this.group.add(body);
 
-                // 目
-                const eyeGeo = new THREE.BoxGeometry(0.2, 0.2, 0.1);
-                const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
-                const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-                eyeL.position.set(-0.2, 0.7, 0.5);
-                const eyeR = eyeL.clone();
-                eyeR.position.x = 0.2;
-                this.group.add(eyeL, eyeR);
+                // Simple Face
+                const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({color: 0x000000}));
+                eye.position.set(-0.2, 0.7, 0.5);
+                this.group.add(eye);
+                const eyeR = eye.clone(); eyeR.position.x = 0.2;
+                this.group.add(eyeR);
 
                 this.group.position.set(x, 0, z);
                 scene.add(this.group);
             }
 
-            update(targets) {
-                if (targets.length === 0) return;
+            update(targets, isIdleAdvance = false) {
+                let targetFound = false;
+                if (targets.length > 0) {
+                    let closest = null;
+                    let minDist = Infinity;
+                    targets.forEach(t => {
+                        const d = this.group.position.distanceTo(t.group.position);
+                        if (d < minDist) { minDist = d; closest = t; }
+                    });
 
-                // 一番近い敵を探す
-                let closest = null;
-                let minDist = Infinity;
-                targets.forEach(t => {
-                    const d = this.group.position.distanceTo(t.group.position);
-                    if (d < minDist) {
-                        minDist = d;
-                        closest = t;
-                    }
-                });
-
-                if (closest) {
-                    // ターゲットの方向を向く
-                    this.group.lookAt(closest.group.position);
-                    
-                    // 近づく
-                    if (minDist > 1.2) {
-                        this.group.translateZ(this.speed);
-                    } else {
-                        // 攻撃（簡易的な体当たりアニメーション）
-                        this.body.position.y = 0.5 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.5;
-                        closest.hp -= 0.5;
+                    if (closest && minDist < 15) { // Detection range
+                        targetFound = true;
+                        this.group.lookAt(closest.group.position);
+                        if (minDist > 1.2) {
+                            this.group.translateZ(this.speed);
+                        } else {
+                            closest.hp -= 1; // Attack
+                            this.group.position.y = Math.abs(Math.sin(Date.now() * 0.02)) * 0.5;
+                        }
                     }
                 }
 
-                // ぴょんぴょん跳ねる動き
-                if (minDist > 1.2) {
-                    this.body.position.y = 0.5 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.2;
+                // If no enemies nearby, move forward (Advance Mode)
+                if (!targetFound && !this.isEnemy && isIdleAdvance) {
+                    this.group.rotation.y = Math.PI; // Face forward (-Z direction)
+                    this.group.position.z -= this.speed;
+                    this.group.position.y = Math.abs(Math.sin(Date.now() * 0.01)) * 0.2;
                 }
             }
         }
 
-        const allies = [];
+        const allies = [new Character(0xFFD700, 0, 0)];
         const enemies = [];
+        let distanceTraveled = 0;
 
-        // 初期配置
-        allies.push(new Character(0xFFD700, 0, 0)); // 黄色の味方
-
-        function spawnEnemy() {
-            const x = (Math.random() - 0.5) * 20;
-            const z = -20;
-            enemies.push(new Character(0xFF4500, x, z, true)); // 赤色の敵
+        // Spawn Enemies further ahead
+        function spawnWave() {
+            const leadZ = allies.length > 0 ? allies[0].group.position.z : 0;
+            for(let i=0; i<3; i++) {
+                enemies.push(new Character(0xFF4500, (Math.random()-0.5)*10, leadZ - 20 - (Math.random()*10), true));
+            }
         }
+        setInterval(() => { if(enemies.length < 2) spawnWave(); }, 4000);
 
-        setInterval(() => {
-            if (enemies.length < 3) spawnEnemy();
-        }, 3000);
-
-        // --- クリックで仲間を増やす ---
+        // Click to add and "Push"
         window.addEventListener('mousedown', () => {
-            const x = (Math.random() - 0.5) * 5;
-            const z = (Math.random() - 0.5) * 5;
-            const colors = [0x00BFFF, 0xFF69B4, 0x32CD32];
-            const randColor = colors[Math.floor(Math.random() * colors.length)];
-            allies.push(new Character(randColor, x, z));
-            document.getElementById('allyCount').innerText = allies.length;
-        });
-
-        // --- カメラ位置 ---
-        camera.position.set(0, 15, 15);
-        camera.lookAt(0, 0, 0);
-
-        // --- メインループ ---
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // 味方の更新
-            for (let i = allies.length - 1; i >= 0; i--) {
-                allies[i].update(enemies);
-                if (allies[i].hp <= 0) {
-                    scene.remove(allies[i].group);
-                    allies.splice(i, 1);
-                }
-            }
-
-            // 敵の更新
-            for (let i = enemies.length - 1; i >= 0; i--) {
-                enemies[i].update(allies);
-                if (enemies[i].hp <= 0) {
-                    scene.remove(enemies[i].group);
-                    enemies.splice(i, 1);
-                }
-            }
-
-            renderer.render(scene, camera);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        animate();
-    </script>
-</body>
-</html>
+            const leadZ = allies[0].group.position.z;
+            allies.push(new Character(Math.random() * 0xffffff, (Math.random()-0.5)*5, leadZ + 2));
