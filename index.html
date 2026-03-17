@@ -3,248 +3,251 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voxel Quest - Skill Update</title>
+    <title>PokeVoxel Quest Ultra</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background: #444; font-family: 'Courier New', Courier, monospace; touch-action: none; }
         #ui {
-            position: absolute; top: 20px; left: 20px; color: white;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5); pointer-events: none; z-index: 10;
+            position: absolute; top: 10px; left: 10px; color: white;
+            text-shadow: 2px 2px black; pointer-events: none; z-index: 10;
         }
-        .instruction {
-            position: absolute; bottom: 30px; width: 100%; text-align: center;
-            color: white; font-weight: bold; text-shadow: 1px 1px 2px black;
+        .skill-container {
+            position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px;
         }
-        #controls {
-            position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
-            display: grid; grid-template-areas: ". up ." "left down right";
-            gap: 10px; opacity: 0.8;
+        .skill-btn {
+            width: 60px; height: 60px; border-radius: 10px; border: 3px solid #fff;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white; font-weight: bold; cursor: pointer; font-size: 10px;
         }
-        .control-btn {
-            background: rgba(0,0,0,0.6); color: white; border: 2px solid white;
-            width: 50px; height: 50px; display: flex; justify-content: center; align-items: center;
-            font-size: 1.5em; border-radius: 10px; user-select: none; cursor: pointer;
-        }
-        #skill-btn {
-            position: absolute; bottom: 80px; right: 30px; width: 70px; height: 70px;
-            background: rgba(255, 69, 0, 0.8); color: white; border: 2px solid gold;
-            border-radius: 50%; display: flex; justify-content: center; align-items: center;
-            font-weight: bold; cursor: pointer; z-index: 11;
+        #skill1 { background: #f08030; } /* 炎 */
+        #skill2 { background: #78c850; } /* 草 */
+        #skill3 { background: #6890f0; } /* 水 */
+        
+        #boss-warning {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: red; font-size: 50px; font-weight: bold; display: none; text-shadow: 3px 3px black;
         }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h1 style="margin:0;">Voxel Quest</h1>
-        <p>仲間: <span id="allyCount">0</span> | 距離: <span id="distance">0</span>m</p>
-        <p>HP: <span id="playerHp">100</span> | スキル: SPACEキー</p>
-    </div>
-    
-    <div id="skill-btn">技</div>
-
-    <div id="controls">
-        <div class="control-btn" style="grid-area: up;" id="btn-up">↑</div>
-        <div class="control-btn" style="grid-area: left;" id="btn-left">←</div>
-        <div class="control-btn" style="grid-area: down;" id="btn-down">↓</div>
-        <div class="control-btn" style="grid-area: right;" id="btn-right">→</div>
+        <h2 style="margin:0;">POKE VOXEL</h2>
+        <p>距離: <span id="distance">0</span>m | 仲間: <span id="allyCount">0</span></p>
+        <p>HP: <progress id="hp-bar" value="100" max="100" style="width:200px;"></progress></p>
     </div>
 
-    <div class="instruction">WASD/矢印で移動 | SPACEで技！ | クリックで召喚</div>
+    <div id="boss-warning">WARNING: BOSS APPEARED!</div>
+
+    <div class="skill-container">
+        <div class="skill-btn" id="skill1">たいあたり<br>(Q)</div>
+        <div class="skill-btn" id="skill2 { background: #78c850; }">はっぱカッター<br>(E)</div>
+        <div class="skill-btn" id="skill3 { background: #c03028; }">だいもんじ<br>(R)</div>
+    </div>
 
     <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
-            }
-        }
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
 
+        // --- 初期設定 ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-        scene.add(ambientLight);
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        sunLight.position.set(10, 20, 10);
-        sunLight.castShadow = true;
-        scene.add(sunLight);
+        const light = new THREE.DirectionalLight(0xffffff, 1.5);
+        light.position.set(10, 20, 10);
+        light.castShadow = true;
+        scene.add(light, new THREE.AmbientLight(0xffffff, 0.6));
 
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x7cfc00 });
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(50, 5000), floorMat);
+        // 地面 (テクスチャ風グリッド)
+        const floorGeo = new THREE.PlaneGeometry(60, 5000);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x7cfc00, roughness: 0.8 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
-        floor.position.z = -2400;
         floor.receiveShadow = true;
         scene.add(floor);
 
-        // --- 入力管理 ---
-        const keys = {};
-        window.addEventListener('keydown', (e) => keys[e.code] = true);
-        window.addEventListener('keyup', (e) => keys[e.code] = false);
+        // グリッドヘルパーで模様をつける
+        const grid = new THREE.GridHelper(5000, 500, 0x000000, 0x000000);
+        grid.rotation.x = -Math.PI / 2;
+        grid.position.y = 0.01;
+        grid.material.opacity = 0.1;
+        grid.material.transparent = true;
+        scene.add(grid);
 
-        // --- キャラクター共通クラス ---
-        class BaseChar {
-            constructor(color, x, z) {
-                this.mesh = new THREE.Group();
-                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }));
-                body.castShadow = true;
-                body.position.y = 0.5;
-                this.mesh.add(body);
-                this.body = body;
-                this.mesh.position.set(x, 0, z);
-                scene.add(this.mesh);
-                this.hp = 100;
-                this.isDead = false;
+        // --- キャラクター作成関数 ---
+        function createVoxelModel(type) {
+            const group = new THREE.Group();
+            let color = 0xffcc00; // ピカ風
+            if(type === 'enemy') color = 0x888888;
+            if(type === 'boss') color = 0x440044;
+
+            // 本体
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }));
+            body.position.y = 0.5;
+            body.castShadow = true;
+            group.add(body);
+
+            // 耳・模様など（単色以外にする）
+            const earGeo = new THREE.BoxGeometry(0.3, 0.5, 0.2);
+            const earMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const earL = new THREE.Mesh(earGeo, earMat);
+            earL.position.set(-0.3, 1.1, 0);
+            group.add(earL);
+            const earR = earL.clone(); earR.position.x = 0.3; group.add(earR);
+
+            // 目
+            const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({color: 0}));
+            eye.position.set(-0.2, 0.7, 0.5);
+            group.add(eye);
+            const eyeR = eye.clone(); eyeR.position.x = 0.2; group.add(eyeR);
+
+            return group;
+        }
+
+        class Entity {
+            constructor(type, x, z) {
+                this.type = type;
+                this.model = createVoxelModel(type);
+                this.model.position.set(x, 0, z);
+                if(type === 'boss') this.model.scale.set(4, 4, 4);
+                scene.add(this.model);
+                this.hp = type === 'boss' ? 500 : 100;
+                this.maxHp = this.hp;
+                this.speed = type === 'ally' ? 0.2 : 0.08;
             }
         }
 
-        // --- プレイヤー ---
-        class Player extends BaseChar {
-            constructor() {
-                super(0x00BFFF, 0, 0);
-                this.skillActive = false;
-                this.skillTimer = 0;
-            }
-            update() {
-                let dx = 0, dz = 0;
-                if (keys['KeyW'] || keys['ArrowUp']) dz -= 0.15;
-                if (keys['KeyS'] || keys['ArrowDown']) dz += 0.15;
-                if (keys['KeyA'] || keys['ArrowLeft']) dx -= 0.15;
-                if (keys['KeyD'] || keys['ArrowRight']) dx += 0.15;
-
-                this.mesh.position.x += dx;
-                this.mesh.position.z += dz;
-                if (dx !== 0 || dz !== 0) {
-                    this.mesh.rotation.y = Math.atan2(dx, dz);
-                    this.body.position.y = 0.5 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.2;
-                }
-
-                if ((keys['Space']) && !this.skillActive) this.activateSkill();
-
-                if (this.skillActive) {
-                    this.skillTimer--;
-                    this.mesh.rotation.y += 0.5; // 高速回転
-                    this.body.scale.set(1.5, 1.5, 1.5);
-                    if (this.skillTimer <= 0) {
-                        this.skillActive = false;
-                        this.body.scale.set(1, 1, 1);
-                    }
-                }
-            }
-            activateSkill() {
-                this.skillActive = true;
-                this.skillTimer = 40;
-            }
-        }
-
-        const player = new Player();
+        // --- 状態管理 ---
+        const player = new Entity('player', 0, 0);
         const allies = [];
         const enemies = [];
+        const keys = {};
+        let distCount = 0;
+        let isBossBattle = false;
 
-        // --- 仲間と敵の更新ロジック ---
-        function updateAllies() {
-            allies.forEach((a, i) => {
-                let target = null;
-                let minDist = 10;
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        // --- スキル処理 ---
+        function useSkill(num) {
+            if(num === 1) { // 突進
+                player.model.translateZ(3);
                 enemies.forEach(e => {
-                    const d = a.mesh.position.distanceTo(e.mesh.position);
-                    if (d < minDist) { minDist = d; target = e; }
+                    if(e.model.position.distanceTo(player.model.position) < 3) e.hp -= 40;
                 });
-
-                if (target) {
-                    a.mesh.lookAt(target.mesh.position);
-                    if (minDist > 1.2) a.mesh.translateZ(0.1);
-                    else target.hp -= 2;
-                } else {
-                    const dToP = a.mesh.position.distanceTo(player.mesh.position);
-                    if (dToP > 3) {
-                        a.mesh.lookAt(player.mesh.position);
-                        a.mesh.translateZ(0.12);
-                    }
-                }
-                if (a.hp <= 0) { scene.remove(a.mesh); allies.splice(i, 1); }
-            });
-        }
-
-        function updateEnemies() {
-            enemies.forEach((e, i) => {
-                const dToP = e.mesh.position.distanceTo(player.mesh.position);
-                if (player.skillActive && dToP < 3) { e.hp -= 10; e.mesh.position.z -= 1; } // スキル跳ね返し
-                
-                const targets = [player, ...allies];
-                let closest = player;
-                let minDist = dToP;
-                allies.forEach(a => {
-                    const d = e.mesh.position.distanceTo(a.mesh.position);
-                    if (d < minDist) { minDist = d; closest = a; }
-                });
-
-                e.mesh.lookAt(closest.mesh.position);
-                if (minDist > 1.2) e.mesh.translateZ(0.05);
-                else closest.hp -= 0.5;
-
-                if (e.hp <= 0) { scene.remove(e.mesh); enemies.splice(i, 1); }
-            });
-        }
-
-        // --- スポーンとイベント ---
-        setInterval(() => {
-            if (enemies.length < 5) {
-                const x = player.mesh.position.x + (Math.random()-0.5)*20;
-                const z = player.mesh.position.z - 30;
-                enemies.push(new BaseChar(0xFF4500, x, z));
             }
-        }, 2000);
+            if(num === 2) { // カッター
+                for(let i=0; i<8; i++) {
+                    const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.1,0.5), new THREE.MeshStandardMaterial({color: 0x00ff00}));
+                    leaf.position.copy(player.model.position);
+                    scene.add(leaf);
+                    setTimeout(() => scene.remove(leaf), 500);
+                }
+                enemies.forEach(e => {
+                    if(e.model.position.distanceTo(player.model.position) < 6) e.hp -= 20;
+                });
+            }
+            if(num === 3) { // 爆発
+                const blast = new THREE.Mesh(new THREE.SphereGeometry(4), new THREE.MeshBasicMaterial({color: 0xff4500, transparent: true, opacity: 0.5}));
+                blast.position.copy(player.model.position);
+                scene.add(blast);
+                setTimeout(() => scene.remove(blast), 300);
+                enemies.forEach(e => {
+                    if(e.model.position.distanceTo(player.model.position) < 5) e.hp -= 60;
+                });
+            }
+        }
 
-        const spawnAlly = () => {
-            const a = new BaseChar(Math.random()*0xffffff, player.mesh.position.x, player.mesh.position.z + 2);
-            allies.push(a);
-            document.getElementById('allyCount').innerText = allies.length;
-        };
-        window.addEventListener('mousedown', (e) => { if(e.target.tagName !== 'DIV') spawnAlly(); });
-        document.getElementById('skill-btn').addEventListener('click', () => player.activateSkill());
+        document.getElementById('skill1').onclick = () => useSkill(1);
+        document.getElementById('skill2').onclick = () => useSkill(2);
+        document.getElementById('skill3').onclick = () => useSkill(3);
 
-        // スマホボタン
-        const setupBtn = (id, key) => {
-            const el = document.getElementById(id);
-            el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
-            el.addEventListener('touchend', () => keys[key] = false);
-        };
-        setupBtn('btn-up', 'KeyW'); setupBtn('btn-down', 'KeyS'); setupBtn('btn-left', 'KeyA'); setupBtn('btn-right', 'KeyD');
-
+        // --- メインループ ---
         function animate() {
             requestAnimationFrame(animate);
-            player.update();
-            updateAllies();
-            updateEnemies();
 
-            camera.position.set(player.mesh.position.x, 15, player.mesh.position.z + 15);
-            camera.lookAt(player.mesh.position);
-            
-            document.getElementById('playerHp').innerText = Math.max(0, Math.floor(player.hp));
-            document.getElementById('distance').innerText = Math.floor(Math.abs(player.mesh.position.z));
-            
-            // 背景変化
-            const p = (Math.abs(player.mesh.position.z) % 1000) / 1000;
-            scene.background.setHSL(0.6, 0.5, 0.5 + Math.sin(p * Math.PI) * 0.2);
-            floorMat.color.setHSL(0.3, 0.5, 0.4 + Math.sin(p * Math.PI) * 0.1);
+            // 移動
+            if (keys['KeyW']) player.model.position.z -= 0.2;
+            if (keys['KeyS']) player.model.position.z += 0.2;
+            if (keys['KeyA']) player.model.position.x -= 0.2;
+            if (keys['KeyD']) player.model.position.x += 0.2;
+            if (keys['KeyQ']) { useSkill(1); keys['KeyQ'] = false; }
+            if (keys['KeyE']) { useSkill(2); keys['KeyE'] = false; }
+            if (keys['KeyR']) { useSkill(3); keys['KeyR'] = false; }
+
+            // 仲間追従 (超高速化)
+            allies.forEach(a => {
+                const dist = a.model.position.distanceTo(player.model.position);
+                if(dist > 3) {
+                    a.model.lookAt(player.model.position);
+                    a.model.translateZ(0.25);
+                }
+            });
+
+            // 敵AI
+            enemies.forEach((e, i) => {
+                e.model.lookAt(player.model.position);
+                e.model.translateZ(e.speed);
+                if(e.model.position.distanceTo(player.model.position) < 1.5) {
+                    player.hp -= 0.2;
+                }
+                if(e.hp <= 0) {
+                    scene.remove(e.model);
+                    enemies.splice(i, 1);
+                    if(e.type === 'boss') {
+                        isBossBattle = false;
+                        document.getElementById('boss-warning').style.display = 'none';
+                    }
+                }
+            });
+
+            // ボス出現ロジック
+            distCount = Math.floor(Math.abs(player.model.position.z));
+            if(distCount > 0 && distCount % 300 === 0 && !isBossBattle) {
+                isBossBattle = true;
+                const boss = new Entity('boss', 0, player.model.position.z - 40);
+                enemies.push(boss);
+                document.getElementById('boss-warning').style.display = 'block';
+            }
+
+            // スポーン
+            if(!isBossBattle && enemies.length < 3 && Math.random() < 0.02) {
+                enemies.push(new Entity('enemy', (Math.random()-0.5)*20, player.model.position.z - 30));
+            }
+
+            // UI & カメラ
+            document.getElementById('distance').innerText = distCount;
+            document.getElementById('hp-bar').value = player.hp;
+            camera.position.set(player.model.position.x, 15, player.model.position.z + 15);
+            camera.lookAt(player.model.position);
+
+            // 背景の変化
+            const hue = (distCount % 1000) / 1000;
+            if(isBossBattle) {
+                scene.background = new THREE.Color(0x330000);
+            } else {
+                scene.background = new THREE.Color().setHSL(hue, 0.4, 0.6);
+            }
 
             renderer.render(scene, camera);
         }
-        animate();
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        // クリックで仲間召喚
+        window.addEventListener('mousedown', (e) => {
+            if(e.target.className !== 'skill-btn') {
+                const a = new Entity('ally', player.model.position.x, player.model.position.z + 2);
+                allies.push(a);
+                document.getElementById('allyCount').innerText = allies.length;
+            }
         });
+
+        animate();
     </script>
 </body>
 </html>
