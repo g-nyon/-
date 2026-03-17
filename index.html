@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voxel Quest Ultra - Final</title>
+    <title>PokeVoxel Quest - DX Edition</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #222; font-family: 'Arial', sans-serif; touch-action: none; }
@@ -16,14 +16,14 @@
             display: flex; gap: 15px; z-index: 20;
         }
         .skill-btn {
-            width: 70px; height: 70px; border-radius: 15px; border: 3px solid #fff;
+            width: 75px; height: 75px; border-radius: 15px; border: 3px solid #fff;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             color: white; font-weight: bold; cursor: pointer; font-size: 11px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
-        #skill1 { background: #f08030; }
-        #skill2 { background: #78c850; }
-        #skill3 { background: #c03028; }
+        #skill1 { background: #f08030; } /* 炎 */
+        #skill2 { background: #78c850; } /* 草 */
+        #skill3 { background: #42a5f5; } /* 水 */
         #boss-warning {
             position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
             color: #ff0000; font-size: 40px; font-weight: bold; display: none; 
@@ -34,7 +34,7 @@
 <body>
 
     <div id="ui">
-        <h2 style="margin:0; color: #ffcb05; -webkit-text-stroke: 1px #3b4cca;">VOXEL QUEST</h2>
+        <h2 style="margin:0; color: #ffcb05; -webkit-text-stroke: 1px #3b4cca;">VOXEL QUEST DX</h2>
         <p>距離: <span id="distance">0</span>m | 仲間: <span id="allyCount">2</span></p>
         <p>HP: <progress id="hp-bar" value="100" max="100" style="width:200px; height: 20px;"></progress></p>
     </div>
@@ -42,14 +42,14 @@
     <div id="boss-warning">⚠️ BOSS WARNING ⚠️</div>
 
     <div class="skill-container">
-        <div class="skill-btn" id="skill1" onclick="executeSkill(1)">たいあたり<br>(Q)</div>
-        <div class="skill-btn" id="skill2" onclick="executeSkill(2)">カッター<br>(E)</div>
-        <div class="skill-btn" id="skill3" onclick="executeSkill(3)">ばくはつ<br>(R)</div>
+        <div class="skill-btn" id="btn-q">たいあたり<br>(Q)</div>
+        <div class="skill-btn" id="btn-e">カッター<br>(E)</div>
+        <div class="skill-btn" id="btn-r">ばくはつ<br>(R)</div>
     </div>
 
     <script>
-        // ライブラリの読み込み完了を待ってから開始
         window.onload = () => {
+            // --- Scene Setup ---
             const scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB);
             const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -58,30 +58,32 @@
             renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            const light = new THREE.DirectionalLight(0xffffff, 1.5);
-            light.position.set(10, 20, 10);
+            const light = new THREE.DirectionalLight(0xffffff, 1.2);
+            light.position.set(20, 40, 20);
             light.castShadow = true;
-            scene.add(light, new THREE.AmbientLight(0xffffff, 0.6));
+            scene.add(light, new THREE.AmbientLight(0xffffff, 0.7));
 
-            // 地面
+            // Ground
             const floorMat = new THREE.MeshStandardMaterial({ color: 0x7cfc00 });
             const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 5000), floorMat);
             floor.rotation.x = -Math.PI / 2;
             floor.receiveShadow = true;
             scene.add(floor);
 
-            // 背景に木を追加
-            for(let i=0; i<100; i++) {
-                const tree = new THREE.Group();
-                const trunk = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({color: 0x8b4513}));
-                const leaves = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), new THREE.MeshStandardMaterial({color: 0x228b22}));
-                leaves.position.y = 2;
-                tree.add(trunk, leaves);
-                tree.position.set((Math.random()-0.5)*50, 1, -i*20);
-                scene.add(tree);
+            // --- Effects Manager ---
+            const particles = [];
+            function createExplosion(pos, color, count = 10) {
+                for (let i = 0; i < count; i++) {
+                    const p = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshBasicMaterial({ color }));
+                    p.position.copy(pos);
+                    p.userData.vel = new THREE.Vector3((Math.random()-0.5)*0.5, Math.random()*0.5, (Math.random()-0.5)*0.5);
+                    p.userData.life = 30;
+                    scene.add(p);
+                    particles.push(p);
+                }
             }
 
-            // --- キャラクター作成 ---
+            // --- Character Factory ---
             function createCharMesh(color, isBoss = false) {
                 const group = new THREE.Group();
                 const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }));
@@ -89,13 +91,14 @@
                 body.castShadow = true;
                 group.add(body);
 
-                const ear = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-                ear.position.set(-0.4, 1.0, 0);
-                group.add(ear);
-                const earR = ear.clone(); earR.position.x = 0.4; group.add(earR);
+                // Ears (Flipped face direction to Z+)
+                const earL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+                earL.position.set(-0.4, 1.0, 0);
+                group.add(earL);
+                const earR = earL.clone(); earR.position.x = 0.4; group.add(earR);
 
                 const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({color: 0}));
-                eye.position.set(-0.25, 0.7, 0.5);
+                eye.position.set(-0.25, 0.7, 0.51); // Front face at Z+
                 group.add(eye);
                 const eyeR = eye.clone(); eyeR.position.x = 0.25; group.add(eyeR);
 
@@ -103,14 +106,30 @@
                 return group;
             }
 
+            // --- Entity Class ---
             class Entity {
                 constructor(type, x, z, color) {
                     this.type = type;
                     this.model = createCharMesh(color || 0x888888, type === 'boss');
                     this.model.position.set(x, 0, z);
                     scene.add(this.model);
-                    this.hp = type === 'boss' ? 1000 : 100;
-                    this.speed = (type === 'ally' || type === 'player') ? 0.25 : 0.08;
+                    this.hp = type === 'boss' ? 1500 : 100;
+                    this.speed = (type === 'player' || type === 'ally') ? 0.25 : 0.08;
+                    this.knockback = new THREE.Vector3();
+                    this.skillCooldown = 0;
+                }
+
+                takeDamage(dmg, sourcePos) {
+                    this.hp -= dmg;
+                    createExplosion(this.model.position, 0xff0000, 5);
+                    // Knockback calculation
+                    const dir = new THREE.Vector3().subVectors(this.model.position, sourcePos).normalize();
+                    this.knockback.addScaledVector(dir, 1.5);
+                }
+
+                updatePhysics() {
+                    this.model.position.add(this.knockback);
+                    this.knockback.multiplyScalar(0.9); // Friction
                 }
             }
 
@@ -120,45 +139,101 @@
             const keys = {};
             let isBossBattle = false;
 
-            window.addEventListener('keydown', e => keys[e.code] = true);
-            window.addEventListener('keyup', e => keys[e.code] = false);
+            // --- Input ---
+            window.addEventListener('keydown', e => { keys[e.code] = true; });
+            window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-            window.executeSkill = (id) => {
-                if(id === 1) { player.model.translateZ(5); enemies.forEach(e => { if(e.model.position.distanceTo(player.model.position) < 4) e.hp -= 60; }); }
-                if(id === 2) { 
-                    const ef = new THREE.Mesh(new THREE.TorusGeometry(3, 0.2), new THREE.MeshBasicMaterial({color: 0x78c850}));
-                    ef.rotation.x = Math.PI/2; ef.position.copy(player.model.position); scene.add(ef);
-                    setTimeout(() => scene.remove(ef), 400);
-                    enemies.forEach(e => { if(e.model.position.distanceTo(player.model.position) < 6) e.hp -= 30; });
-                }
-                if(id === 3) {
-                    const bl = new THREE.Mesh(new THREE.SphereGeometry(5), new THREE.MeshBasicMaterial({color: 0xff4500, transparent: true, opacity: 0.6}));
-                    bl.position.copy(player.model.position); scene.add(bl);
-                    setTimeout(() => scene.remove(bl), 300);
-                    enemies.forEach(e => { if(e.model.position.distanceTo(player.model.position) < 7) e.hp -= 100; });
-                }
-            };
+            function useSkill(id, caster) {
+                if(caster.skillCooldown > 0) return;
+                caster.skillCooldown = 60; // 1秒程度のクールダウン
 
+                if (id === 1) { // Dash
+                    createExplosion(caster.model.position, 0xffffff, 5);
+                    caster.model.translateZ(6);
+                    checkHit(caster, 60, 4);
+                } else if (id === 2) { // Cutter
+                    createExplosion(caster.model.position, 0x78c850, 10);
+                    checkHit(caster, 30, 7);
+                } else if (id === 3) { // Blast
+                    createExplosion(caster.model.position, 0xff4500, 20);
+                    checkHit(caster, 100, 10);
+                }
+            }
+
+            function checkHit(caster, dmg, range) {
+                const targets = (caster.type === 'enemy' || caster.type === 'boss') ? [player, ...allies] : enemies;
+                targets.forEach(t => {
+                    if (t.model.position.distanceTo(caster.model.position) < range) {
+                        t.takeDamage(dmg, caster.model.position);
+                    }
+                });
+            }
+
+            // Buttons
+            document.getElementById('btn-q').onclick = () => useSkill(1, player);
+            document.getElementById('btn-e').onclick = () => useSkill(2, player);
+            document.getElementById('btn-r').onclick = () => useSkill(3, player);
+
+            // --- Main Loop ---
             function animate() {
                 requestAnimationFrame(animate);
-                if (keys['KeyW'] || keys['ArrowUp']) player.model.position.z -= player.speed;
-                if (keys['KeyS'] || keys['ArrowDown']) player.model.position.z += player.speed;
-                if (keys['KeyA'] || keys['ArrowLeft']) player.model.position.x -= player.speed;
-                if (keys['KeyD'] || keys['ArrowRight']) player.model.position.x += player.speed;
 
+                // Player Movement
+                let moveDir = new THREE.Vector3(0, 0, 0);
+                if (keys['KeyW'] || keys['ArrowUp']) moveDir.z -= 1;
+                if (keys['KeyS'] || keys['ArrowDown']) moveDir.z += 1;
+                if (keys['KeyA'] || keys['ArrowLeft']) moveDir.x -= 1;
+                if (keys['KeyD'] || keys['ArrowRight']) moveDir.x += 1;
+
+                if (moveDir.length() > 0) {
+                    moveDir.normalize();
+                    player.model.position.addScaledVector(moveDir, player.speed);
+                    // Rotate to face direction
+                    const angle = Math.atan2(moveDir.x, moveDir.z);
+                    player.model.rotation.y = angle;
+                }
+
+                // Key Skills
+                if(keys['KeyQ']) useSkill(1, player);
+                if(keys['KeyE']) useSkill(2, player);
+                if(keys['KeyR']) useSkill(3, player);
+
+                // Particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.position.add(p.userData.vel);
+                    p.userData.life--;
+                    if (p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
+                }
+
+                // Allies Logic
                 allies.forEach(a => {
-                    const d = a.model.position.distanceTo(player.model.position);
-                    if(d > 2.5) { a.model.lookAt(player.model.position); a.model.translateZ(0.25); }
+                    a.updatePhysics();
+                    const dToP = a.model.position.distanceTo(player.model.position);
+                    if(dToP > 3) {
+                        a.model.lookAt(player.model.position);
+                        a.model.translateZ(0.26);
+                    }
+                    // Random Skill
+                    if(Math.random() < 0.005) useSkill(Math.floor(Math.random()*3)+1, a);
+                    if(a.skillCooldown > 0) a.skillCooldown--;
                 });
 
+                // Enemy Spawning & Logic
+                if(!isBossBattle && enemies.length < 5 && Math.random() < 0.015) {
+                    enemies.push(new Entity('enemy', (Math.random()-0.5)*40, player.model.position.z - 50, 0xff4444));
+                }
+
                 enemies.forEach((e, i) => {
-                    e.model.lookAt(player.model.position); e.model.translateZ(e.speed);
-                    if(e.model.position.distanceTo(player.model.position) < 1.5) player.hp -= 0.3;
+                    e.updatePhysics();
+                    e.model.lookAt(player.model.position);
+                    e.model.translateZ(e.speed);
+                    
+                    if(e.model.position.distanceTo(player.model.position) < 1.5) player.takeDamage(0.5, e.model.position);
+                    
                     if(e.hp <= 0) {
-                        // 倒した敵を低確率で仲間にする
-                        if(e.type === 'enemy' && Math.random() < 0.3) {
-                            const newAlly = new Entity('ally', e.model.position.x, e.model.position.z, 0xffffff);
-                            allies.push(newAlly);
+                        if(e.type === 'enemy' && Math.random() < 0.2) {
+                            allies.push(new Entity('ally', e.model.position.x, e.model.position.z, 0xffffff));
                             document.getElementById('allyCount').innerText = allies.length;
                         }
                         scene.remove(e.model); enemies.splice(i, 1);
@@ -166,31 +241,31 @@
                     }
                 });
 
+                // World State
                 const dist = Math.floor(Math.abs(player.model.position.z));
                 document.getElementById('distance').innerText = dist;
                 document.getElementById('hp-bar').value = player.hp;
+                if(player.skillCooldown > 0) player.skillCooldown--;
 
-                if(dist > 0 && dist % 300 === 0 && !isBossBattle) {
+                // Boss
+                if(dist > 0 && dist % 400 === 0 && !isBossBattle) {
                     isBossBattle = true;
-                    enemies.push(new Entity('boss', 0, player.model.position.z - 40));
+                    enemies.push(new Entity('boss', 0, player.model.position.z - 50, 0x6a1b9a));
                     document.getElementById('boss-warning').style.display = 'block';
                 }
 
-                if(!isBossBattle && enemies.length < 4 && Math.random() < 0.02) {
-                    enemies.push(new Entity('enemy', (Math.random()-0.5)*30, player.model.position.z - 40));
-                }
-
-                camera.position.set(player.model.position.x, 15, player.model.position.z + 15);
+                camera.position.set(player.model.position.x, 18, player.model.position.z + 20);
                 camera.lookAt(player.model.position);
                 
-                // 背景の変化をよりダイナミックに
+                // BG Color
                 const hue = (dist % 1000) / 1000;
-                if(isBossBattle) { scene.background.set(0x440000); floorMat.color.set(0x220000); }
-                else { scene.background.setHSL(hue, 0.6, 0.6); floorMat.color.setHSL(hue, 0.4, 0.4); }
+                scene.background.setHSL(hue, 0.5, 0.6);
+                floorMat.color.setHSL(hue, 0.4, 0.4);
 
                 renderer.render(scene, camera);
             }
             animate();
+
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
