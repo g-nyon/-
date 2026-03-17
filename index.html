@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voxel Quest Ultra - Fixed</title>
+    <title>Voxel Quest Ultra - Final</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #222; font-family: 'Arial', sans-serif; touch-action: none; }
         #ui {
@@ -18,13 +19,11 @@
             width: 70px; height: 70px; border-radius: 15px; border: 3px solid #fff;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             color: white; font-weight: bold; cursor: pointer; font-size: 11px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: transform 0.1s;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
-        .skill-btn:active { transform: scale(0.9); }
-        #skill1 { background: #f08030; } /* 炎 */
-        #skill2 { background: #78c850; } /* 草 */
-        #skill3 { background: #c03028; } /* 格闘 */
-        
+        #skill1 { background: #f08030; }
+        #skill2 { background: #78c850; }
+        #skill3 { background: #c03028; }
         #boss-warning {
             position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
             color: #ff0000; font-size: 40px; font-weight: bold; display: none; 
@@ -43,159 +42,161 @@
     <div id="boss-warning">⚠️ BOSS WARNING ⚠️</div>
 
     <div class="skill-container">
-        <div class="skill-btn" id="skill1">たいあたり<br>(Q)</div>
-        <div class="skill-btn" id="skill2">カッター<br>(E)</div>
-        <div class="skill-btn" id="skill3">ばくはつ<br>(R)</div>
+        <div class="skill-btn" id="skill1" onclick="executeSkill(1)">たいあたり<br>(Q)</div>
+        <div class="skill-btn" id="skill2" onclick="executeSkill(2)">カッター<br>(E)</div>
+        <div class="skill-btn" id="skill3" onclick="executeSkill(3)">ばくはつ<br>(R)</div>
     </div>
 
-    <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-    </script>
+    <script>
+        // ライブラリの読み込み完了を待ってから開始
+        window.onload = () => {
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
 
-    <script type="module">
-        import * as THREE from 'three';
+            const light = new THREE.DirectionalLight(0xffffff, 1.5);
+            light.position.set(10, 20, 10);
+            light.castShadow = true;
+            scene.add(light, new THREE.AmbientLight(0xffffff, 0.6));
 
-        // --- 基本設定 ---
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        document.body.appendChild(renderer.domElement);
+            // 地面
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x7cfc00 });
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 5000), floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
 
-        const light = new THREE.DirectionalLight(0xffffff, 1.5);
-        light.position.set(10, 20, 10);
-        light.castShadow = true;
-        scene.add(light, new THREE.AmbientLight(0xffffff, 0.6));
-
-        // 地面
-        const floorGeo = new THREE.PlaneGeometry(60, 5000);
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x7cfc00 });
-        const floor = new THREE.Mesh(floorGeo, floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        scene.add(floor);
-
-        const grid = new THREE.GridHelper(5000, 500, 0x44aa44, 0x44aa44);
-        grid.position.y = 0.05;
-        scene.add(grid);
-
-        // --- キャラクター作成 ---
-        function createCharacter(type, customColor) {
-            const group = new THREE.Group();
-            let bodyColor = customColor || (type === 'player' ? 0xffcc00 : 0x888888);
-            if(type === 'boss') bodyColor = 0x550055;
-
-            // ボディ
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: bodyColor }));
-            body.position.y = 0.5;
-            body.castShadow = true;
-            group.add(body);
-
-            // 耳（ポケモン風）
-            const earGeo = new THREE.BoxGeometry(0.3, 0.6, 0.2);
-            const earMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-            const earL = new THREE.Mesh(earGeo, earMat);
-            earL.position.set(-0.4, 1.0, 0);
-            group.add(earL);
-            const earR = earL.clone(); earR.position.x = 0.4; group.add(earR);
-
-            // 目
-            const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({color: 0x000000}));
-            eye.position.set(-0.25, 0.7, 0.5);
-            group.add(eye);
-            const eyeR = eye.clone(); eyeR.position.x = 0.25; group.add(eyeR);
-
-            return group;
-        }
-
-        class Entity {
-            constructor(type, x, z, color) {
-                this.type = type;
-                this.model = createCharacter(type, color);
-                this.model.position.set(x, 0, z);
-                if(type === 'boss') this.model.scale.set(4, 4, 4);
-                scene.add(this.model);
-                this.hp = type === 'boss' ? 800 : 100;
-                this.speed = (type === 'ally' || type === 'player') ? 0.2 : 0.07;
+            // 背景に木を追加
+            for(let i=0; i<100; i++) {
+                const tree = new THREE.Group();
+                const trunk = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({color: 0x8b4513}));
+                const leaves = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), new THREE.MeshStandardMaterial({color: 0x228b22}));
+                leaves.position.y = 2;
+                tree.add(trunk, leaves);
+                tree.position.set((Math.random()-0.5)*50, 1, -i*20);
+                scene.add(tree);
             }
-        }
 
-        // --- ゲーム状態 ---
-        const player = new Entity('player', 0, 0, 0xffeb3b);
-        const allies = [
-            new Entity('ally', -2, 2, 0x00bcd4),
-            new Entity('ally', 2, 2, 0xe91e63)
-        ];
-        const enemies = [];
-        const keys = {};
-        let isBossBattle = false;
+            // --- キャラクター作成 ---
+            function createCharMesh(color, isBoss = false) {
+                const group = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }));
+                body.position.y = 0.5;
+                body.castShadow = true;
+                group.add(body);
 
-        window.addEventListener('keydown', e => keys[e.code] = true);
-        window.addEventListener('keyup', e => keys[e.code] = false);
+                const ear = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+                ear.position.set(-0.4, 1.0, 0);
+                group.add(ear);
+                const earR = ear.clone(); earR.position.x = 0.4; group.add(earR);
 
-        // --- 技の処理 ---
-        function executeSkill(id) {
-            if (id === 1) { // 突進
-                player.model.translateZ(4);
-                enemies.forEach(e => {
-                    if(e.model.position.distanceTo(player.model.position) < 4) e.hp -= 50;
-                });
+                const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({color: 0}));
+                eye.position.set(-0.25, 0.7, 0.5);
+                group.add(eye);
+                const eyeR = eye.clone(); eyeR.position.x = 0.25; group.add(eyeR);
+
+                if(isBoss) group.scale.set(4, 4, 4);
+                return group;
             }
-            if (id === 2) { // 範囲攻撃
-                const effect = new THREE.Mesh(new THREE.TorusGeometry(3, 0.2, 16, 32), new THREE.MeshBasicMaterial({color: 0x78c850}));
-                effect.rotation.x = Math.PI/2;
-                effect.position.copy(player.model.position);
-                scene.add(effect);
-                setTimeout(() => scene.remove(effect), 400);
-                enemies.forEach(e => {
-                    if(e.model.position.distanceTo(player.model.position) < 6) e.hp -= 30;
-                });
-            }
-            if (id === 3) { // 爆発
-                const blast = new THREE.Mesh(new THREE.SphereGeometry(5), new THREE.MeshBasicMaterial({color: 0xff4500, transparent: true, opacity: 0.6}));
-                blast.position.copy(player.model.position);
-                scene.add(blast);
-                setTimeout(() => scene.remove(blast), 300);
-                enemies.forEach(e => {
-                    if(e.model.position.distanceTo(player.model.position) < 7) e.hp -= 100;
-                });
-            }
-        }
 
-        document.getElementById('skill1').addEventListener('click', () => executeSkill(1));
-        document.getElementById('skill2').addEventListener('click', () => executeSkill(2));
-        document.getElementById('skill3').addEventListener('click', () => executeSkill(3));
-
-        // --- メインループ ---
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // プレイヤー移動
-            if (keys['KeyW'] || keys['ArrowUp']) player.model.position.z -= player.speed;
-            if (keys['KeyS'] || keys['ArrowDown']) player.model.position.z += player.speed;
-            if (keys['KeyA'] || keys['ArrowLeft']) player.model.position.x -= player.speed;
-            if (keys['KeyD'] || keys['ArrowRight']) player.model.position.x += player.speed;
-            
-            // ショートカットキー
-            if (keys['KeyQ']) { executeSkill(1); keys['KeyQ'] = false; }
-            if (keys['KeyE']) { executeSkill(2); keys['KeyE'] = false; }
-            if (keys['KeyR']) { executeSkill(3); keys['KeyR'] = false; }
-
-            // 仲間（超高速追従）
-            allies.forEach(a => {
-                const d = a.model.position.distanceTo(player.model.position);
-                if(d > 2.5) {
-                    a.model.lookAt(player.model.position);
-                    a.model.translateZ(0.25);
+            class Entity {
+                constructor(type, x, z, color) {
+                    this.type = type;
+                    this.model = createCharMesh(color || 0x888888, type === 'boss');
+                    this.model.position.set(x, 0, z);
+                    scene.add(this.model);
+                    this.hp = type === 'boss' ? 1000 : 100;
+                    this.speed = (type === 'ally' || type === 'player') ? 0.25 : 0.08;
                 }
-            });
+            }
 
-            // 敵AI
-            enemies.forEach((e, i) => {
-                const dToP = e.model.position.distanceTo(player.model.position);
-                e.model.lookAt(player.model.position);
-                e.model.translateZ(e.speed);
+            const player = new Entity('player', 0, 0, 0xffeb3b);
+            const allies = [new Entity('ally', -2, 2, 0x00bcd4), new Entity('ally', 2, 2, 0xe91e63)];
+            const enemies = [];
+            const keys = {};
+            let isBossBattle = false;
+
+            window.addEventListener('keydown', e => keys[e.code] = true);
+            window.addEventListener('keyup', e => keys[e.code] = false);
+
+            window.executeSkill = (id) => {
+                if(id === 1) { player.model.translateZ(5); enemies.forEach(e => { if(e.model.position.distanceTo(player.model.position) < 4) e.hp -= 60; }); }
+                if(id === 2) { 
+                    const ef = new THREE.Mesh(new THREE.TorusGeometry(3, 0.2), new THREE.MeshBasicMaterial({color: 0x78c850}));
+                    ef.rotation.x = Math.PI/2; ef.position.copy(player.model.position); scene.add(ef);
+                    setTimeout(() => scene.remove(ef), 400);
+                    enemies.forEach(e => { if(e.model.position.distanceTo(player.model.position) < 6) e.hp -= 30; });
+                }
+                if(id === 3) {
+                    const bl = new THREE.Mesh(new THREE.SphereGeometry(5), new THREE.MeshBasicMaterial({color: 0xff4500, transparent: true, opacity: 0.6}));
+                    bl.position.copy(player.model.position); scene.add(bl);
+                    setTimeout(() => scene.remove(bl), 300);
+                    enemies.forEach(e => { if(e.model.position.distanceTo(player.model.position) < 7) e.hp -= 100; });
+                }
+            };
+
+            function animate() {
+                requestAnimationFrame(animate);
+                if (keys['KeyW'] || keys['ArrowUp']) player.model.position.z -= player.speed;
+                if (keys['KeyS'] || keys['ArrowDown']) player.model.position.z += player.speed;
+                if (keys['KeyA'] || keys['ArrowLeft']) player.model.position.x -= player.speed;
+                if (keys['KeyD'] || keys['ArrowRight']) player.model.position.x += player.speed;
+
+                allies.forEach(a => {
+                    const d = a.model.position.distanceTo(player.model.position);
+                    if(d > 2.5) { a.model.lookAt(player.model.position); a.model.translateZ(0.25); }
+                });
+
+                enemies.forEach((e, i) => {
+                    e.model.lookAt(player.model.position); e.model.translateZ(e.speed);
+                    if(e.model.position.distanceTo(player.model.position) < 1.5) player.hp -= 0.3;
+                    if(e.hp <= 0) {
+                        // 倒した敵を低確率で仲間にする
+                        if(e.type === 'enemy' && Math.random() < 0.3) {
+                            const newAlly = new Entity('ally', e.model.position.x, e.model.position.z, 0xffffff);
+                            allies.push(newAlly);
+                            document.getElementById('allyCount').innerText = allies.length;
+                        }
+                        scene.remove(e.model); enemies.splice(i, 1);
+                        if(e.type === 'boss') { isBossBattle = false; document.getElementById('boss-warning').style.display = 'none'; }
+                    }
+                });
+
+                const dist = Math.floor(Math.abs(player.model.position.z));
+                document.getElementById('distance').innerText = dist;
+                document.getElementById('hp-bar').value = player.hp;
+
+                if(dist > 0 && dist % 300 === 0 && !isBossBattle) {
+                    isBossBattle = true;
+                    enemies.push(new Entity('boss', 0, player.model.position.z - 40));
+                    document.getElementById('boss-warning').style.display = 'block';
+                }
+
+                if(!isBossBattle && enemies.length < 4 && Math.random() < 0.02) {
+                    enemies.push(new Entity('enemy', (Math.random()-0.5)*30, player.model.position.z - 40));
+                }
+
+                camera.position.set(player.model.position.x, 15, player.model.position.z + 15);
+                camera.lookAt(player.model.position);
                 
-                if(dToP < 1.5)
+                // 背景の変化をよりダイナミックに
+                const hue = (dist % 1000) / 1000;
+                if(isBossBattle) { scene.background.set(0x440000); floorMat.color.set(0x220000); }
+                else { scene.background.setHSL(hue, 0.6, 0.6); floorMat.color.setHSL(hue, 0.4, 0.4); }
+
+                renderer.render(scene, camera);
+            }
+            animate();
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        };
+    </script>
+</body>
+</html>
