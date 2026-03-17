@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voxel Quest - Interactive & Dynamic</title>
+    <title>Voxel Quest - Skill Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; touch-action: none; }
         #ui {
@@ -15,37 +15,41 @@
             color: white; font-weight: bold; text-shadow: 1px 1px 2px black;
         }
         #controls {
-            position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+            position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
             display: grid; grid-template-areas: ". up ." "left down right";
-            gap: 5px; opacity: 0.8;
+            gap: 10px; opacity: 0.8;
         }
         .control-btn {
-            background: rgba(0,0,0,0.5); color: white; border: 1px solid white;
-            width: 45px; height: 45px; display: flex; justify-content: center; align-items: center;
-            font-size: 1.2em; border-radius: 5px; user-select: none; cursor: pointer;
-            box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+            background: rgba(0,0,0,0.6); color: white; border: 2px solid white;
+            width: 50px; height: 50px; display: flex; justify-content: center; align-items: center;
+            font-size: 1.5em; border-radius: 10px; user-select: none; cursor: pointer;
         }
-        .control-btn:active { background: rgba(255,255,255,0.3); }
-        #up { grid-area: up; } #left { grid-area: left; }
-        #down { grid-area: down; } #right { grid-area: right; }
+        #skill-btn {
+            position: absolute; bottom: 80px; right: 30px; width: 70px; height: 70px;
+            background: rgba(255, 69, 0, 0.8); color: white; border: 2px solid gold;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            font-weight: bold; cursor: pointer; z-index: 11;
+        }
     </style>
 </head>
 <body>
 
     <div id="ui">
         <h1 style="margin:0;">Voxel Quest</h1>
-        <p>仲間: <span id="allyCount">1</span> | 距離: <span id="distance">0</span>m</p>
-        <p>HP: <span id="playerHp">100</span></p>
+        <p>仲間: <span id="allyCount">0</span> | 距離: <span id="distance">0</span>m</p>
+        <p>HP: <span id="playerHp">100</span> | スキル: SPACEキー</p>
     </div>
-    <div class="instruction">WASDキーまたは画面の方向ボタンで移動 / タップで仲間を増やす！</div>
+    
+    <div id="skill-btn">技</div>
 
     <div id="controls">
-        <div class="control-btn" id="up">↑</div>
-        <div class="control-btn" id="left">←</div>
-        <div class="control-btn" id="down">↓</div>
-        <div class="control-btn" id="right">→</div>
+        <div class="control-btn" style="grid-area: up;" id="btn-up">↑</div>
+        <div class="control-btn" style="grid-area: left;" id="btn-left">←</div>
+        <div class="control-btn" style="grid-area: down;" id="btn-down">↓</div>
+        <div class="control-btn" style="grid-area: right;" id="btn-right">→</div>
     </div>
 
+    <div class="instruction">WASD/矢印で移動 | SPACEで技！ | クリックで召喚</div>
 
     <script type="importmap">
         {
@@ -58,19 +62,14 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- シーン設定 ---
         const scene = new THREE.Scene();
-        let currentSkyColor = new THREE.Color(0x87CEEB); // 初期空色
-        let currentGroundColor = new THREE.Color(0x7cfc00); // 初期地面色
-        scene.background = currentSkyColor;
-
+        scene.background = new THREE.Color(0x87CEEB);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // ライト
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
         const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -78,307 +77,174 @@
         sunLight.castShadow = true;
         scene.add(sunLight);
 
-        // 無限に続く地面
-        const floorGeo = new THREE.PlaneGeometry(50, 5000);
-        const floorMat = new THREE.MeshStandardMaterial({ color: currentGroundColor });
-        const floor = new THREE.Mesh(floorGeo, floorMat);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x7cfc00 });
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(50, 5000), floorMat);
         floor.rotation.x = -Math.PI / 2;
-        floor.position.z = -2400; 
+        floor.position.z = -2400;
         floor.receiveShadow = true;
         scene.add(floor);
 
-        // --- プレイヤーキャラクター ---
-        let player;
-        let playerHp = 100;
-        let playerSpeed = 0.15;
-        const keys = { w: false, a: false, s: false, d: false, up: false, down: false, left: false, right: false };
+        // --- 入力管理 ---
+        const keys = {};
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        class PlayerCharacter extends THREE.Group {
+        // --- キャラクター共通クラス ---
+        class BaseChar {
             constructor(color, x, z) {
-                super(); // THREE.Groupを継承
-                this.hp = 100;
-                this.speed = playerSpeed; // プレイヤーは専用の速度
-                
-                const body = new THREE.Mesh(
-                    new THREE.BoxGeometry(1, 1, 1),
-                    new THREE.MeshStandardMaterial({ color: color })
-                );
-                body.position.y = 0.5;
+                this.mesh = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }));
                 body.castShadow = true;
-                this.add(body);
-
-                // 顔
-                const eyeGeo = new THREE.BoxGeometry(0.2, 0.2, 0.1);
-                const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
-                const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-                eyeL.position.set(-0.2, 0.7, 0.5);
-                const eyeR = eyeL.clone();
-                eyeR.position.x = 0.2;
-                this.add(eyeL, eyeR);
-
-                this.position.set(x, 0, z);
-                scene.add(this);
-            }
-
-            updateMovement() {
-                const prevPosition = this.position.clone();
-                let moved = false;
-
-                if (keys.w || keys.up) { this.position.z -= this.speed; moved = true; }
-                if (keys.s || keys.down) { this.position.z += this.speed; moved = true; }
-                if (keys.a || keys.left) { this.position.x -= this.speed; moved = true; }
-                if (keys.d || keys.right) { this.position.x += this.speed; moved = true; }
-
-                if (moved) {
-                    // 移動した方向に体を向ける (Y軸回転)
-                    const angle = Math.atan2(this.position.x - prevPosition.x, this.position.z - prevPosition.z);
-                    this.rotation.y = angle;
-                } else {
-                     // 敵がいなければ、前を向く
-                     this.rotation.y = 0; // z軸マイナス方向が前
-                }
+                body.position.y = 0.5;
+                this.mesh.add(body);
+                this.body = body;
+                this.mesh.position.set(x, 0, z);
+                scene.add(this.mesh);
+                this.hp = 100;
+                this.isDead = false;
             }
         }
-        player = new PlayerCharacter(0x00BFFF, 0, 0); // 青色のプレイヤー
 
-        // --- 味方・敵キャラクタークラス ---
-        class Character {
-            constructor(color, x, z, isEnemy = false) {
-                this.group = new THREE.Group();
-                this.isEnemy = isEnemy;
-                this.speed = isEnemy ? 0.05 : 0.08; 
-                this.hp = 100;
-
-                const body = new THREE.Mesh(
-                    new THREE.BoxGeometry(1, 1, 1),
-                    new THREE.MeshStandardMaterial({ color: color })
-                );
-                body.position.y = 0.5;
-                body.castShadow = true;
-                this.group.add(body);
-
-                // 顔
-                const eyeGeo = new THREE.BoxGeometry(0.2, 0.2, 0.1);
-                const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
-                const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-                eyeL.position.set(-0.2, 0.7, 0.5);
-                const eyeR = eyeL.clone();
-                eyeR.position.x = 0.2;
-                this.group.add(eyeL, eyeR);
-
-                this.group.position.set(x, 0, z);
-                scene.add(this.group);
+        // --- プレイヤー ---
+        class Player extends BaseChar {
+            constructor() {
+                super(0x00BFFF, 0, 0);
+                this.skillActive = false;
+                this.skillTimer = 0;
             }
+            update() {
+                let dx = 0, dz = 0;
+                if (keys['KeyW'] || keys['ArrowUp']) dz -= 0.15;
+                if (keys['KeyS'] || keys['ArrowDown']) dz += 0.15;
+                if (keys['KeyA'] || keys['ArrowLeft']) dx -= 0.15;
+                if (keys['KeyD'] || keys['ArrowRight']) dx += 0.15;
 
-            update(targets, leaderPosition) {
-                if (this.hp <= 0) return;
+                this.mesh.position.x += dx;
+                this.mesh.position.z += dz;
+                if (dx !== 0 || dz !== 0) {
+                    this.mesh.rotation.y = Math.atan2(dx, dz);
+                    this.body.position.y = 0.5 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.2;
+                }
 
-                let target = null;
-                let minDist = 15; // 索敵範囲
+                if ((keys['Space']) && !this.skillActive) this.activateSkill();
 
-                targets.forEach(t => {
-                    if (t.hp > 0) { // ターゲットが生存しているか確認
-                        const d = this.group.position.distanceTo(t.group.position);
-                        if (d < minDist) {
-                            minDist = d;
-                            target = t;
-                        }
+                if (this.skillActive) {
+                    this.skillTimer--;
+                    this.mesh.rotation.y += 0.5; // 高速回転
+                    this.body.scale.set(1.5, 1.5, 1.5);
+                    if (this.skillTimer <= 0) {
+                        this.skillActive = false;
+                        this.body.scale.set(1, 1, 1);
                     }
+                }
+            }
+            activateSkill() {
+                this.skillActive = true;
+                this.skillTimer = 40;
+            }
+        }
+
+        const player = new Player();
+        const allies = [];
+        const enemies = [];
+
+        // --- 仲間と敵の更新ロジック ---
+        function updateAllies() {
+            allies.forEach((a, i) => {
+                let target = null;
+                let minDist = 10;
+                enemies.forEach(e => {
+                    const d = a.mesh.position.distanceTo(e.mesh.position);
+                    if (d < minDist) { minDist = d; target = e; }
                 });
 
                 if (target) {
-                    // 敵がいれば戦う
-                    this.group.lookAt(target.group.position);
-                    if (minDist > 1.2) { // 攻撃範囲外
-                        this.group.translateZ(this.speed);
-                    } else { // 攻撃範囲内
-                        target.hp -= this.isEnemy ? 1 : 2; // 味方の方が攻撃力高め
-                        this.group.position.y = Math.abs(Math.sin(Date.now() * 0.02)) * 0.5; // 攻撃アニメ
-                    }
+                    a.mesh.lookAt(target.mesh.position);
+                    if (minDist > 1.2) a.mesh.translateZ(0.1);
+                    else target.hp -= 2;
                 } else {
-                    // 敵がいなければリーダーに追従（味方のみ）
-                    if (!this.isEnemy) {
-                        const distToLeader = this.group.position.distanceTo(leaderPosition);
-                        if (distToLeader > 3) { // リーダーから離れすぎたら追従
-                            this.group.lookAt(leaderPosition);
-                            this.group.translateZ(this.speed * 1.5); // 追いつくために少し速く
-                        } else {
-                            // リーダーの近くにいたらその場に留まるか、少し動く
-                            this.group.rotation.y = leaderPosition.x > this.group.position.x ? Math.PI / 2 : -Math.PI / 2;
-                            this.group.position.y = Math.abs(Math.sin(Date.now() * 0.01)) * 0.2;
-                        }
+                    const dToP = a.mesh.position.distanceTo(player.mesh.position);
+                    if (dToP > 3) {
+                        a.mesh.lookAt(player.mesh.position);
+                        a.mesh.translateZ(0.12);
                     }
                 }
-            }
+                if (a.hp <= 0) { scene.remove(a.mesh); allies.splice(i, 1); }
+            });
         }
 
-        const allies = []; // プレイヤーを除く仲間
-        const enemies = [];
+        function updateEnemies() {
+            enemies.forEach((e, i) => {
+                const dToP = e.mesh.position.distanceTo(player.mesh.position);
+                if (player.skillActive && dToP < 3) { e.hp -= 10; e.mesh.position.z -= 1; } // スキル跳ね返し
+                
+                const targets = [player, ...allies];
+                let closest = player;
+                let minDist = dToP;
+                allies.forEach(a => {
+                    const d = e.mesh.position.distanceTo(a.mesh.position);
+                    if (d < minDist) { minDist = d; closest = a; }
+                });
 
-        // 敵のスポーン（進行度に合わせて出現）
-        function spawnEnemy() {
-            const currentZ = player.position.z;
-            const x = (Math.random() - 0.5) * 20;
-            const z = currentZ - 40 - (Math.random() * 20); // プレイヤーの40m~60m先にスポーン
-            enemies.push(new Character(0xFF4500, x, z, true));
+                e.mesh.lookAt(closest.mesh.position);
+                if (minDist > 1.2) e.mesh.translateZ(0.05);
+                else closest.hp -= 0.5;
+
+                if (e.hp <= 0) { scene.remove(e.mesh); enemies.splice(i, 1); }
+            });
         }
 
+        // --- スポーンとイベント ---
         setInterval(() => {
-            if (enemies.length < 5 && Math.random() < 0.5) spawnEnemy(); // 確率でスポーン
-        }, 3000);
-
-        // --- 入力検知 ---
-        window.addEventListener('keydown', (e) => {
-            switch (e.key) {
-                case 'w': case 'W': keys.w = true; break;
-                case 'a': case 'A': keys.a = true; break;
-                case 's': case 'S': keys.s = true; break;
-                case 'd': case 'D': keys.d = true; break;
-                case 'ArrowUp': keys.up = true; break;
-                case 'ArrowDown': keys.down = true; break;
-                case 'ArrowLeft': keys.left = true; break;
-                case 'ArrowRight': keys.right = true; break;
+            if (enemies.length < 5) {
+                const x = player.mesh.position.x + (Math.random()-0.5)*20;
+                const z = player.mesh.position.z - 30;
+                enemies.push(new BaseChar(0xFF4500, x, z));
             }
-        });
-        window.addEventListener('keyup', (e) => {
-            switch (e.key) {
-                case 'w': case 'W': keys.w = false; break;
-                case 'a': case 'A': keys.a = false; break;
-                case 's': case 'S': keys.s = false; break;
-                case 'd': case 'D': keys.d = false; break;
-                case 'ArrowUp': keys.up = false; break;
-                case 'ArrowDown': keys.down = false; break;
-                case 'ArrowLeft': keys.left = false; break;
-                case 'ArrowRight': keys.right = false; break;
-            }
-        });
+        }, 2000);
 
-        const handleAllySpawn = (e) => {
-            if (e.target.closest('#controls')) return; // 方向ボタンのクリックは無視
-            
-            const colors = [0xFFD700, 0xFF69B4, 0x32CD32, 0xFFFFFF];
-            const randColor = colors[Math.floor(Math.random() * colors.length)];
-            // プレイヤーの近くにスポーン
-            allies.push(new Character(randColor, player.position.x + (Math.random()-0.5)*2, player.position.z + (Math.random()-0.5)*2));
+        const spawnAlly = () => {
+            const a = new BaseChar(Math.random()*0xffffff, player.mesh.position.x, player.mesh.position.z + 2);
+            allies.push(a);
             document.getElementById('allyCount').innerText = allies.length;
         };
+        window.addEventListener('mousedown', (e) => { if(e.target.tagName !== 'DIV') spawnAlly(); });
+        document.getElementById('skill-btn').addEventListener('click', () => player.activateSkill());
 
-        window.addEventListener('mousedown', handleAllySpawn);
-        window.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            handleAllySpawn(e);
-        }, { passive: false });
-
-        // スマホ向けコントロールボタン
-        const controlButtons = {
-            'up': () => keys.up = true, 'down': () => keys.down = true,
-            'left': () => keys.left = true, 'right': () => keys.right = true
+        // スマホボタン
+        const setupBtn = (id, key) => {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
+            el.addEventListener('touchend', () => keys[key] = false);
         };
-        const releaseKeys = {
-            'up': () => keys.up = false, 'down': () => keys.down = false,
-            'left': () => keys.left = false, 'right': () => keys.right = false
-        };
+        setupBtn('btn-up', 'KeyW'); setupBtn('btn-down', 'KeyS'); setupBtn('btn-left', 'KeyA'); setupBtn('btn-right', 'KeyD');
 
-        for (const id in controlButtons) {
-            const btn = document.getElementById(id);
-            if (btn) {
-                btn.addEventListener('touchstart', (e) => { e.preventDefault(); controlButtons[id](); }, { passive: false });
-                btn.addEventListener('touchend', releaseKeys[id], { passive: false });
-                btn.addEventListener('mousedown', (e) => { e.preventDefault(); controlButtons[id](); });
-                btn.addEventListener('mouseup', releaseKeys[id]);
-                btn.addEventListener('mouseleave', releaseKeys[id]); // ドラッグアウトで離れた時用
-            }
-        }
-
-
-        // --- メインループ ---
         function animate() {
             requestAnimationFrame(animate);
+            player.update();
+            updateAllies();
+            updateEnemies();
 
-            player.updateMovement();
+            camera.position.set(player.mesh.position.x, 15, player.mesh.position.z + 15);
+            camera.lookAt(player.mesh.position);
             
-            // プレイヤーと敵の衝突判定
-            enemies.forEach(enemy => {
-                if (enemy.hp > 0 && player.position.distanceTo(enemy.group.position) < 1.2) {
-                    playerHp -= 0.5; // プレイヤーもダメージを受ける
-                    document.getElementById('playerHp').innerText = Math.max(0, Math.floor(playerHp));
-                }
-            });
-
-            // ゲームオーバー判定
-            if (playerHp <= 0) {
-                alert('ゲームオーバー！');
-                playerHp = 100; // リスタートのため
-                document.getElementById('playerHp').innerText = 100;
-                player.position.set(0,0,0); // プレイヤーを初期位置に戻す
-                enemies.forEach(e => scene.remove(e.group));
-                enemies.length = 0; // 敵を全消去
-                allies.forEach(a => scene.remove(a.group));
-                allies.length = 0; // 仲間も全消去
-                document.getElementById('allyCount').innerText = 0;
-            }
-
-
-            allies.forEach((a, i) => {
-                a.update(enemies, player.position); // プレイヤーをリーダーとして追従
-                if (a.hp <= 0) {
-                    scene.remove(a.group);
-                    allies.splice(i, 1);
-                }
-            });
-
-            enemies.forEach((e, i) => {
-                e.update([player, ...allies], e.group.position); // プレイヤーと仲間が敵のターゲットになる
-                if (e.hp <= 0) {
-                    scene.remove(e.group);
-                    enemies.splice(i, 1);
-                }
-            });
-
-            // カメラがプレイヤーを追いかける
-            camera.position.set(player.position.x, 15, player.position.z + 15);
-            camera.lookAt(player.position.x, 0, player.position.z);
+            document.getElementById('playerHp').innerText = Math.max(0, Math.floor(player.hp));
+            document.getElementById('distance').innerText = Math.floor(Math.abs(player.mesh.position.z));
             
-            const distanceTraveled = Math.floor(Math.abs(player.position.z));
-            document.getElementById('distance').innerText = distanceTraveled;
-
-            // --- 背景色の変化 ---
-            const progress = distanceTraveled / 500; // 500mで1サイクル
-            const cycle = Math.floor(progress);
-            const phase = progress - cycle; // 0-1のフェーズ
-
-            let nextSkyColor, nextGroundColor;
-
-            // スカイカラーの遷移 (例: 青 -> 夕焼け -> 夜 -> 暁 -> 青)
-            if (phase < 0.25) { // 青空から夕焼け
-                nextSkyColor = new THREE.Color(0x87CEEB).lerp(new THREE.Color(0xFF8C00), phase * 4);
-                nextGroundColor = new THREE.Color(0x7cfc00).lerp(new THREE.Color(0xA0522D), phase * 4);
-            } else if (phase < 0.5) { // 夕焼けから夜空
-                nextSkyColor = new THREE.Color(0xFF8C00).lerp(new THREE.Color(0x191970), (phase - 0.25) * 4);
-                nextGroundColor = new THREE.Color(0xA0522D).lerp(new THREE.Color(0x2F4F4F), (phase - 0.25) * 4);
-            } else if (phase < 0.75) { // 夜空から暁
-                nextSkyColor = new THREE.Color(0x191970).lerp(new THREE.Color(0xFFD700), (phase - 0.5) * 4);
-                nextGroundColor = new THREE.Color(0x2F4F4F).lerp(new THREE.Color(0x696969), (phase - 0.5) * 4);
-            } else { // 暁から青空
-                nextSkyColor = new THREE.Color(0xFFD700).lerp(new THREE.Color(0x87CEEB), (phase - 0.75) * 4);
-                nextGroundColor = new THREE.Color(0x696969).lerp(new THREE.Color(0x7cfc00), (phase - 0.75) * 4);
-            }
-
-            scene.background.copy(nextSkyColor);
-            floorMat.color.copy(nextGroundColor);
-
+            // 背景変化
+            const p = (Math.abs(player.mesh.position.z) % 1000) / 1000;
+            scene.background.setHSL(0.6, 0.5, 0.5 + Math.sin(p * Math.PI) * 0.2);
+            floorMat.color.setHSL(0.3, 0.5, 0.4 + Math.sin(p * Math.PI) * 0.1);
 
             renderer.render(scene, camera);
         }
+        animate();
 
-        // リサイズ対応
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-
-        animate();
     </script>
 </body>
 </html>
