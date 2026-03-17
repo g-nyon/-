@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PokeVoxel Quest - DX Edition</title>
+    <title>Kaku-Koro Quest Replica</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; font-family: 'Arial', sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background: #60ad5e; font-family: 'Courier New', sans-serif; touch-action: none; }
         #ui {
             position: absolute; top: 10px; left: 10px; color: white;
             text-shadow: 2px 2px black; pointer-events: none; z-index: 10;
@@ -16,252 +16,287 @@
             display: flex; gap: 15px; z-index: 20;
         }
         .skill-btn {
-            width: 75px; height: 75px; border-radius: 15px; border: 3px solid #fff;
+            width: 80px; height: 80px; border-radius: 10px; border: 4px solid #fff;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: white; font-weight: bold; cursor: pointer; font-size: 11px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            color: white; font-weight: bold; cursor: pointer; font-size: 10px;
+            box-shadow: 0 6px 0 rgba(0,0,0,0.3); position: relative; overflow: hidden;
         }
-        #skill1 { background: #f08030; } /* 炎 */
-        #skill2 { background: #78c850; } /* 草 */
-        #skill3 { background: #42a5f5; } /* 水 */
+        .cooldown-overlay {
+            position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.6);
+            height: 0%; transition: height 0.1s linear;
+        }
+        #skill1 { background: #fcd116; color: #3b4cca; } /* でんき */
+        #skill2 { background: #7ac74c; } /* くさ */
+        #skill3 { background: #6390f0; } /* みず */
+        #btn-scatter {
+            position: absolute; bottom: 20px; right: 20px; width: 70px; height: 70px;
+            background: #ff5252; border-radius: 50%; border: 4px solid white;
+            color: white; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
         #boss-warning {
-            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
-            color: #ff0000; font-size: 40px; font-weight: bold; display: none; 
-            text-shadow: 4px 4px black; z-index: 15; text-align: center; width: 100%;
+            position: absolute; top: 20%; width: 100%; text-align: center;
+            color: #ffeb3b; font-size: 50px; font-weight: bold; display: none; text-shadow: 5px 5px #f44336;
         }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h2 style="margin:0; color: #ffcb05; -webkit-text-stroke: 1px #3b4cca;">VOXEL QUEST DX</h2>
-        <p>距離: <span id="distance">0</span>m | 仲間: <span id="allyCount">2</span></p>
-        <p>HP: <progress id="hp-bar" value="100" max="100" style="width:200px; height: 20px;"></progress></p>
+        <h2 style="margin:0; font-size: 24px;">KAKU-KORO QUEST</h2>
+        <p>探索距離: <span id="distance">0</span>m | チーム: <span id="allyCount">3</span></p>
     </div>
 
-    <div id="boss-warning">⚠️ BOSS WARNING ⚠️</div>
+    <div id="boss-warning">WAVE CLEAR / BOSS APPEARED!</div>
 
     <div class="skill-container">
-        <div class="skill-btn" id="btn-q">たいあたり<br>(Q)</div>
-        <div class="skill-btn" id="btn-e">カッター<br>(E)</div>
-        <div class="skill-btn" id="btn-r">ばくはつ<br>(R)</div>
+        <div class="skill-btn" id="btn-q" onclick="triggerSkill(1)">10まんボルト<br>(Q)<div id="cd1" class="cooldown-overlay"></div></div>
+        <div class="skill-btn" id="btn-e" onclick="triggerSkill(2)">はっぱカッター<br>(E)<div id="cd2" class="cooldown-overlay"></div></div>
+        <div class="skill-btn" id="btn-r" onclick="triggerSkill(3)">ハイドロポンプ<br>(R)<div id="cd3" class="cooldown-overlay"></div></div>
     </div>
+    <div id="btn-scatter">あつまれ<br>(Shift)</div>
 
     <script>
         window.onload = () => {
-            // --- Scene Setup ---
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB);
-            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            scene.background = new THREE.Color(0x81c784);
+            const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
             const renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
             const light = new THREE.DirectionalLight(0xffffff, 1.2);
-            light.position.set(20, 40, 20);
+            light.position.set(30, 50, 30);
             light.castShadow = true;
-            scene.add(light, new THREE.AmbientLight(0xffffff, 0.7));
+            scene.add(light, new THREE.AmbientLight(0xffffff, 0.8));
 
-            // Ground
-            const floorMat = new THREE.MeshStandardMaterial({ color: 0x7cfc00 });
-            const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 5000), floorMat);
+            // Ground with grid
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x72c06d });
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 5000), floorMat);
             floor.rotation.x = -Math.PI / 2;
             floor.receiveShadow = true;
             scene.add(floor);
+            const grid = new THREE.GridHelper(5000, 500, 0x5ea85a, 0x5ea85a);
+            grid.position.y = 0.01;
+            scene.add(grid);
 
-            // --- Effects Manager ---
+            // Particles
             const particles = [];
-            function createExplosion(pos, color, count = 10) {
-                for (let i = 0; i < count; i++) {
-                    const p = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshBasicMaterial({ color }));
+            function spawnEffect(pos, color, size = 0.4, count = 8) {
+                for(let i=0; i<count; i++) {
+                    const p = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshBasicMaterial({color}));
                     p.position.copy(pos);
-                    p.userData.vel = new THREE.Vector3((Math.random()-0.5)*0.5, Math.random()*0.5, (Math.random()-0.5)*0.5);
-                    p.userData.life = 30;
+                    p.userData = { vel: new THREE.Vector3((Math.random()-0.5)*0.6, Math.random()*0.6, (Math.random()-0.5)*0.6), life: 25 };
                     scene.add(p);
                     particles.push(p);
                 }
             }
 
-            // --- Character Factory ---
-            function createCharMesh(color, isBoss = false) {
-                const group = new THREE.Group();
-                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }));
-                body.position.y = 0.5;
-                body.castShadow = true;
-                group.add(body);
-
-                // Ears (Flipped face direction to Z+)
-                const earL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 0.2), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-                earL.position.set(-0.4, 1.0, 0);
-                group.add(earL);
-                const earR = earL.clone(); earR.position.x = 0.4; group.add(earR);
-
-                const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({color: 0}));
-                eye.position.set(-0.25, 0.7, 0.51); // Front face at Z+
-                group.add(eye);
-                const eyeR = eye.clone(); eyeR.position.x = 0.25; group.add(eyeR);
-
-                if(isBoss) group.scale.set(4, 4, 4);
-                return group;
-            }
-
-            // --- Entity Class ---
+            // --- Entity Logic ---
             class Entity {
                 constructor(type, x, z, color) {
                     this.type = type;
-                    this.model = createCharMesh(color || 0x888888, type === 'boss');
-                    this.model.position.set(x, 0, z);
-                    scene.add(this.model);
-                    this.hp = type === 'boss' ? 1500 : 100;
-                    this.speed = (type === 'player' || type === 'ally') ? 0.25 : 0.08;
+                    this.group = new THREE.Group();
+                    
+                    // Body
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({color}));
+                    body.castShadow = true; body.position.y = 0.6;
+                    this.group.add(body);
+                    this.body = body;
+
+                    // Eyes
+                    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.1), new THREE.MeshStandardMaterial({color: 0x222222}));
+                    eye.position.set(-0.3, 0.8, 0.61); this.group.add(eye);
+                    const eyeR = eye.clone(); eyeR.position.x = 0.3; this.group.add(eyeR);
+
+                    // Feet
+                    const footGeo = new THREE.BoxGeometry(0.4, 0.3, 0.4);
+                    this.footL = new THREE.Mesh(footGeo, new THREE.MeshStandardMaterial({color}));
+                    this.footL.position.set(-0.4, 0.15, 0); this.group.add(this.footL);
+                    this.footR = this.footL.clone(); this.footR.position.x = 0.4; this.group.add(this.footR);
+
+                    // HP Bar (3D Sprite)
+                    this.hpBar = this.createHPBar();
+                    this.group.add(this.hpBar);
+
+                    this.group.position.set(x, 0, z);
+                    scene.add(this.group);
+
+                    this.maxHp = type === 'boss' ? 2000 : 150;
+                    this.hp = this.maxHp;
+                    this.speed = (type === 'enemy') ? 0.08 : 0.22;
                     this.knockback = new THREE.Vector3();
-                    this.skillCooldown = 0;
+                    this.skillCD = 0;
+                    this.isDead = false;
                 }
 
-                takeDamage(dmg, sourcePos) {
+                createHPBar() {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 64; canvas.height = 8;
+                    const map = new THREE.CanvasTexture(canvas);
+                    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map}));
+                    sprite.scale.set(2, 0.25, 1);
+                    sprite.position.y = 2.2;
+                    sprite.userData.canvas = canvas; sprite.userData.ctx = canvas.getContext('2d');
+                    return sprite;
+                }
+
+                updateHPBar() {
+                    const ctx = this.hpBar.userData.ctx;
+                    ctx.fillStyle = '#333'; ctx.fillRect(0,0,64,8);
+                    ctx.fillStyle = this.type === 'enemy' || this.type === 'boss' ? '#f44336' : '#4caf50';
+                    ctx.fillRect(1,1, (this.hp/this.maxHp)*62, 6);
+                    this.hpBar.material.map.needsUpdate = true;
+                }
+
+                takeDamage(dmg, fromPos) {
                     this.hp -= dmg;
-                    createExplosion(this.model.position, 0xff0000, 5);
-                    // Knockback calculation
-                    const dir = new THREE.Vector3().subVectors(this.model.position, sourcePos).normalize();
-                    this.knockback.addScaledVector(dir, 1.5);
+                    const dir = new THREE.Vector3().subVectors(this.group.position, fromPos).normalize();
+                    this.knockback.addScaledVector(dir, 0.8);
+                    spawnEffect(this.group.position, 0xffffff, 0.2, 3);
+                    if(this.hp <= 0) this.die();
                 }
 
-                updatePhysics() {
-                    this.model.position.add(this.knockback);
-                    this.knockback.multiplyScalar(0.9); // Friction
+                die() {
+                    this.isDead = true;
+                    spawnEffect(this.group.position, 0xffffff, 0.5, 15);
+                    scene.remove(this.group);
+                }
+
+                update() {
+                    if(this.isDead) return;
+                    this.group.position.add(this.knockback);
+                    this.knockback.multiplyScalar(0.85);
+                    
+                    // Walk animation
+                    if(this.knockback.length() > 0.01 || (this.isMoving)) {
+                        const time = Date.now() * 0.01;
+                        this.body.position.y = 0.6 + Math.abs(Math.sin(time)) * 0.3;
+                        this.footL.position.y = 0.15 + Math.sin(time) * 0.2;
+                        this.footR.position.y = 0.15 + Math.cos(time) * 0.2;
+                    }
+                    this.updateHPBar();
                 }
             }
 
+            // --- Game State ---
             const player = new Entity('player', 0, 0, 0xffeb3b);
-            const allies = [new Entity('ally', -2, 2, 0x00bcd4), new Entity('ally', 2, 2, 0xe91e63)];
+            const allies = [new Entity('ally', -2, 2, 0x4fc3f7), new Entity('ally', 2, 2, 0xff8a65)];
             const enemies = [];
             const keys = {};
             let isBossBattle = false;
+            let cooldowns = [0, 0, 0];
 
-            // --- Input ---
-            window.addEventListener('keydown', e => { keys[e.code] = true; });
-            window.addEventListener('keyup', e => { keys[e.code] = false; });
+            window.addEventListener('keydown', e => { keys[e.code] = true; if(e.code === 'ShiftLeft') scatter(); });
+            window.addEventListener('keyup', e => keys[e.code] = false);
 
-            function useSkill(id, caster) {
-                if(caster.skillCooldown > 0) return;
-                caster.skillCooldown = 60; // 1秒程度のクールダウン
-
-                if (id === 1) { // Dash
-                    createExplosion(caster.model.position, 0xffffff, 5);
-                    caster.model.translateZ(6);
-                    checkHit(caster, 60, 4);
-                } else if (id === 2) { // Cutter
-                    createExplosion(caster.model.position, 0x78c850, 10);
-                    checkHit(caster, 30, 7);
-                } else if (id === 3) { // Blast
-                    createExplosion(caster.model.position, 0xff4500, 20);
-                    checkHit(caster, 100, 10);
-                }
-            }
-
-            function checkHit(caster, dmg, range) {
-                const targets = (caster.type === 'enemy' || caster.type === 'boss') ? [player, ...allies] : enemies;
-                targets.forEach(t => {
-                    if (t.model.position.distanceTo(caster.model.position) < range) {
-                        t.takeDamage(dmg, caster.model.position);
-                    }
+            function scatter() {
+                allies.forEach(a => {
+                    const escapeDir = new THREE.Vector3(Math.random()-0.5, 0, Math.random()*2).normalize();
+                    a.knockback.addScaledVector(escapeDir, 1.5);
                 });
             }
 
-            // Buttons
-            document.getElementById('btn-q').onclick = () => useSkill(1, player);
-            document.getElementById('btn-e').onclick = () => useSkill(2, player);
-            document.getElementById('btn-r').onclick = () => useSkill(3, player);
+            window.triggerSkill = (id) => {
+                if(cooldowns[id-1] > 0) return;
+                cooldowns[id-1] = 100;
 
-            // --- Main Loop ---
+                if(id === 1) { // Thunderbolt
+                    spawnEffect(player.group.position, 0xffff00, 0.5, 20);
+                    hitCheck(player.group.position, 6, 80);
+                } else if(id === 2) { // Razor Leaf
+                    const leafDir = new THREE.Vector3(0,0,-1).applyQuaternion(player.group.quaternion);
+                    spawnEffect(player.group.position.clone().add(leafDir.multiplyScalar(2)), 0x4caf50, 0.3, 15);
+                    hitCheck(player.group.position.clone().add(leafDir), 8, 40);
+                } else if(id === 3) { // Hydro Pump
+                    spawnEffect(player.group.position, 0x2196f3, 0.8, 25);
+                    hitCheck(player.group.position, 10, 120);
+                }
+            };
+
+            function hitCheck(pos, range, dmg) {
+                enemies.forEach(e => {
+                    if(e.group.position.distanceTo(pos) < range) e.takeDamage(dmg, pos);
+                });
+            }
+
+            // --- Loop ---
             function animate() {
                 requestAnimationFrame(animate);
 
-                // Player Movement
-                let moveDir = new THREE.Vector3(0, 0, 0);
-                if (keys['KeyW'] || keys['ArrowUp']) moveDir.z -= 1;
-                if (keys['KeyS'] || keys['ArrowDown']) moveDir.z += 1;
-                if (keys['KeyA'] || keys['ArrowLeft']) moveDir.x -= 1;
-                if (keys['KeyD'] || keys['ArrowRight']) moveDir.x += 1;
-
-                if (moveDir.length() > 0) {
-                    moveDir.normalize();
-                    player.model.position.addScaledVector(moveDir, player.speed);
-                    // Rotate to face direction
-                    const angle = Math.atan2(moveDir.x, moveDir.z);
-                    player.model.rotation.y = angle;
+                // Controls
+                let move = new THREE.Vector3();
+                if(keys['KeyW'] || keys['ArrowUp']) move.z -= 1;
+                if(keys['KeyS'] || keys['ArrowDown']) move.z += 1;
+                if(keys['KeyA'] || keys['ArrowLeft']) move.x -= 1;
+                if(keys['KeyD'] || keys['ArrowRight']) move.x += 1;
+                
+                player.isMoving = move.length() > 0;
+                if(player.isMoving) {
+                    move.normalize();
+                    player.group.position.addScaledVector(move, player.speed);
+                    player.group.rotation.y = Math.atan2(move.x, move.z);
                 }
+                player.update();
 
-                // Key Skills
-                if(keys['KeyQ']) useSkill(1, player);
-                if(keys['KeyE']) useSkill(2, player);
-                if(keys['KeyR']) useSkill(3, player);
+                // Shortcut Skills
+                if(keys['KeyQ']) triggerSkill(1);
+                if(keys['KeyE']) triggerSkill(2);
+                if(keys['KeyR']) triggerSkill(3);
+
+                // Allies
+                allies.forEach(a => {
+                    a.update();
+                    const d = a.group.position.distanceTo(player.group.position);
+                    if(d > 4) {
+                        a.group.lookAt(player.group.position);
+                        a.group.translateZ(0.25);
+                        a.isMoving = true;
+                    } else { a.isMoving = false; }
+                    if(Math.random() < 0.005) triggerSkill(Math.floor(Math.random()*3)+1);
+                });
+
+                // Enemies
+                if(!isBossBattle && enemies.length < 5 && Math.random() < 0.02) {
+                    enemies.push(new Entity('enemy', (Math.random()-0.5)*40, player.group.position.z - 50, 0xef5350));
+                }
+                enemies.forEach((e, i) => {
+                    e.update();
+                    e.group.lookAt(player.group.position);
+                    e.group.translateZ(e.speed);
+                    if(e.group.position.distanceTo(player.group.position) < 1.5) player.takeDamage(1, e.group.position);
+                    if(e.isDead) enemies.splice(i, 1);
+                });
 
                 // Particles
-                for (let i = particles.length - 1; i >= 0; i--) {
+                for(let i=particles.length-1; i>=0; i--) {
                     const p = particles[i];
                     p.position.add(p.userData.vel);
                     p.userData.life--;
-                    if (p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
+                    if(p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
                 }
 
-                // Allies Logic
-                allies.forEach(a => {
-                    a.updatePhysics();
-                    const dToP = a.model.position.distanceTo(player.model.position);
-                    if(dToP > 3) {
-                        a.model.lookAt(player.model.position);
-                        a.model.translateZ(0.26);
-                    }
-                    // Random Skill
-                    if(Math.random() < 0.005) useSkill(Math.floor(Math.random()*3)+1, a);
-                    if(a.skillCooldown > 0) a.skillCooldown--;
+                // UI & CD
+                cooldowns = cooldowns.map((v, i) => {
+                    const newVal = Math.max(0, v - 1);
+                    document.getElementById(`cd${i+1}`).style.height = newVal + '%';
+                    return newVal;
                 });
-
-                // Enemy Spawning & Logic
-                if(!isBossBattle && enemies.length < 5 && Math.random() < 0.015) {
-                    enemies.push(new Entity('enemy', (Math.random()-0.5)*40, player.model.position.z - 50, 0xff4444));
-                }
-
-                enemies.forEach((e, i) => {
-                    e.updatePhysics();
-                    e.model.lookAt(player.model.position);
-                    e.model.translateZ(e.speed);
-                    
-                    if(e.model.position.distanceTo(player.model.position) < 1.5) player.takeDamage(0.5, e.model.position);
-                    
-                    if(e.hp <= 0) {
-                        if(e.type === 'enemy' && Math.random() < 0.2) {
-                            allies.push(new Entity('ally', e.model.position.x, e.model.position.z, 0xffffff));
-                            document.getElementById('allyCount').innerText = allies.length;
-                        }
-                        scene.remove(e.model); enemies.splice(i, 1);
-                        if(e.type === 'boss') { isBossBattle = false; document.getElementById('boss-warning').style.display = 'none'; }
-                    }
-                });
-
-                // World State
-                const dist = Math.floor(Math.abs(player.model.position.z));
+                const dist = Math.floor(Math.abs(player.group.position.z));
                 document.getElementById('distance').innerText = dist;
-                document.getElementById('hp-bar').value = player.hp;
-                if(player.skillCooldown > 0) player.skillCooldown--;
 
-                // Boss
+                // Boss Trigger
                 if(dist > 0 && dist % 400 === 0 && !isBossBattle) {
                     isBossBattle = true;
-                    enemies.push(new Entity('boss', 0, player.model.position.z - 50, 0x6a1b9a));
+                    enemies.push(new Entity('boss', 0, player.group.position.z - 50, 0x7e57c2));
                     document.getElementById('boss-warning').style.display = 'block';
+                    setTimeout(() => document.getElementById('boss-warning').style.display = 'none', 3000);
+                } else if (isBossBattle && enemies.length === 0) {
+                    isBossBattle = false;
                 }
 
-                camera.position.set(player.model.position.x, 18, player.model.position.z + 20);
-                camera.lookAt(player.model.position);
-                
-                // BG Color
-                const hue = (dist % 1000) / 1000;
-                scene.background.setHSL(hue, 0.5, 0.6);
-                floorMat.color.setHSL(hue, 0.4, 0.4);
-
+                camera.position.set(player.group.position.x, 20, player.group.position.z + 20);
+                camera.lookAt(player.group.position);
                 renderer.render(scene, camera);
             }
             animate();
