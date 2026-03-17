@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voxel Quest - Advance Mode</title>
+    <title>Voxel Quest - Auto Start</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; touch-action: none; }
         #ui {
             position: absolute; top: 20px; left: 20px; color: white;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5); pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5); pointer-events: none; z-index: 10;
         }
         .instruction {
-            position: absolute; bottom: 20px; width: 100%; text-align: center;
+            position: absolute; bottom: 30px; width: 100%; text-align: center;
             color: white; font-weight: bold; text-shadow: 1px 1px 2px black;
         }
     </style>
@@ -19,10 +19,10 @@
 <body>
 
     <div id="ui">
-        <h1>Voxel Quest</h1>
-        <p>仲間: <span id="allyCount">1</span> | 進行距離: <span id="distance">0</span>m</p>
+        <h1 style="margin:0;">Voxel Quest</h1>
+        <p>仲間: <span id="allyCount">1</span> | 距離: <span id="distance">0</span>m</p>
     </div>
-    <div class="instruction">タップで仲間を召喚 ＆ 全員で前進！</div>
+    <div class="instruction">画面をタップして仲間を増やす！</div>
 
     <script type="importmap">
         {
@@ -35,7 +35,7 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- Scene Setup ---
+        // --- シーン設定 ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -44,96 +44,159 @@
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // Lights
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        // ライト
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
-        const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        sunLight.position.set(5, 20, 10);
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        sunLight.position.set(10, 20, 10);
         sunLight.castShadow = true;
         scene.add(sunLight);
 
-        // Ground (Extremely long for progression)
-        const floorGeo = new THREE.PlaneGeometry(50, 2000);
+        // 無限に続くように見える地面
+        const floorGeo = new THREE.PlaneGeometry(50, 5000);
         const floorMat = new THREE.MeshStandardMaterial({ color: 0x7cfc00 });
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
-        floor.position.z = -900; 
+        floor.position.z = -2400; 
         floor.receiveShadow = true;
         scene.add(floor);
 
-        // --- Character Class ---
+        // --- キャラクタークラス ---
         class Character {
             constructor(color, x, z, isEnemy = false) {
                 this.group = new THREE.Group();
                 this.isEnemy = isEnemy;
-                this.speed = isEnemy ? 0.04 : 0.06;
+                this.speed = isEnemy ? 0.05 : 0.08; // 味方の方が少し速い
                 this.hp = 100;
-                this.baseY = 0.5;
 
                 const body = new THREE.Mesh(
                     new THREE.BoxGeometry(1, 1, 1),
                     new THREE.MeshStandardMaterial({ color: color })
                 );
-                body.position.y = this.baseY;
+                body.position.y = 0.5;
                 body.castShadow = true;
                 this.group.add(body);
 
-                // Simple Face
-                const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({color: 0x000000}));
-                eye.position.set(-0.2, 0.7, 0.5);
-                this.group.add(eye);
-                const eyeR = eye.clone(); eyeR.position.x = 0.2;
-                this.group.add(eyeR);
+                // 顔（前を向かせる）
+                const eyeGeo = new THREE.BoxGeometry(0.2, 0.2, 0.1);
+                const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+                const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+                eyeL.position.set(-0.2, 0.7, 0.5);
+                const eyeR = eyeL.clone();
+                eyeR.position.x = 0.2;
+                this.group.add(eyeL, eyeR);
 
                 this.group.position.set(x, 0, z);
                 scene.add(this.group);
             }
 
-            update(targets, isIdleAdvance = false) {
-                let targetFound = false;
-                if (targets.length > 0) {
-                    let closest = null;
-                    let minDist = Infinity;
-                    targets.forEach(t => {
-                        const d = this.group.position.distanceTo(t.group.position);
-                        if (d < minDist) { minDist = d; closest = t; }
-                    });
+            update(targets) {
+                if (this.hp <= 0) return;
 
-                    if (closest && minDist < 15) { // Detection range
-                        targetFound = true;
-                        this.group.lookAt(closest.group.position);
-                        if (minDist > 1.2) {
-                            this.group.translateZ(this.speed);
-                        } else {
-                            closest.hp -= 1; // Attack
-                            this.group.position.y = Math.abs(Math.sin(Date.now() * 0.02)) * 0.5;
-                        }
+                let target = null;
+                let minDist = 15; // 索敵範囲
+
+                targets.forEach(t => {
+                    const d = this.group.position.distanceTo(t.group.position);
+                    if (d < minDist) {
+                        minDist = d;
+                        target = t;
+                    }
+                });
+
+                if (target) {
+                    // 敵がいれば戦う
+                    this.group.lookAt(target.group.position);
+                    if (minDist > 1.2) {
+                        this.group.translateZ(this.speed);
+                    } else {
+                        target.hp -= 2;
+                        this.group.position.y = Math.abs(Math.sin(Date.now() * 0.02)) * 0.5;
+                    }
+                } else {
+                    // 敵がいなければ前進（味方のみ）
+                    if (!this.isEnemy) {
+                        this.group.rotation.y = Math.PI; // 奥へ向く
+                        this.group.position.z -= this.speed;
+                        this.group.position.y = Math.abs(Math.sin(Date.now() * 0.01)) * 0.2;
                     }
                 }
-
-                // If no enemies nearby, move forward (Advance Mode)
-                if (!targetFound && !this.isEnemy && isIdleAdvance) {
-                    this.group.rotation.y = Math.PI; // Face forward (-Z direction)
-                    this.group.position.z -= this.speed;
-                    this.group.position.y = Math.abs(Math.sin(Date.now() * 0.01)) * 0.2;
-                }
             }
         }
 
-        const allies = [new Character(0xFFD700, 0, 0)];
+        const allies = [];
         const enemies = [];
-        let distanceTraveled = 0;
 
-        // Spawn Enemies further ahead
-        function spawnWave() {
-            const leadZ = allies.length > 0 ? allies[0].group.position.z : 0;
-            for(let i=0; i<3; i++) {
-                enemies.push(new Character(0xFF4500, (Math.random()-0.5)*10, leadZ - 20 - (Math.random()*10), true));
-            }
+        // 最初の味方
+        allies.push(new Character(0xFFD700, 0, 0));
+
+        // 敵のスポーン（進行度に合わせて出現）
+        function spawnEnemy() {
+            const leaderZ = allies.length > 0 ? allies[0].group.position.z : 0;
+            const x = (Math.random() - 0.5) * 15;
+            const z = leaderZ - 30; // 30m先にスポーン
+            enemies.push(new Character(0xFF4500, x, z, true));
         }
-        setInterval(() => { if(enemies.length < 2) spawnWave(); }, 4000);
 
-        // Click to add and "Push"
-        window.addEventListener('mousedown', () => {
-            const leadZ = allies[0].group.position.z;
-            allies.push(new Character(Math.random() * 0xffffff, (Math.random()-0.5)*5, leadZ + 2));
+        setInterval(() => {
+            if (enemies.length < 5) spawnEnemy();
+        }, 2000);
+
+        // --- 入力検知 ---
+        const handleAction = () => {
+            const leaderZ = allies.length > 0 ? allies[0].group.position.z : 0;
+            const colors = [0x00BFFF, 0xFF69B4, 0x32CD32, 0xFFFFFF];
+            const randColor = colors[Math.floor(Math.random() * colors.length)];
+            allies.push(new Character(randColor, (Math.random()-0.5)*5, leaderZ + 2));
+            document.getElementById('allyCount').innerText = allies.length;
+        };
+
+        window.addEventListener('mousedown', handleAction);
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleAction();
+        }, { passive: false });
+
+        // --- メインループ ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            allies.forEach((a, i) => {
+                a.update(enemies);
+                if (a.hp <= 0) {
+                    scene.remove(a.group);
+                    allies.splice(i, 1);
+                }
+            });
+
+            enemies.forEach((e, i) => {
+                e.update(allies);
+                if (e.hp <= 0) {
+                    scene.remove(e.group);
+                    enemies.splice(i, 1);
+                }
+            });
+
+            // カメラが味方を追いかける
+            if (allies.length > 0) {
+                const leader = allies[0].group.position;
+                camera.position.set(leader.x, 12, leader.z + 15);
+                camera.lookAt(leader.x, 0, leader.z - 5);
+                
+                document.getElementById('distance').innerText = Math.floor(Math.abs(leader.z));
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
