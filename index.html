@@ -92,4 +92,110 @@
                 const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
                 eyeL.position.set(-0.2, 0.7, 0.5);
                 const eyeR = eyeL.clone();
-                eyeR.position.x
+                eyeR.position.x = 0.2;
+                this.group.add(eyeL, eyeR);
+
+                this.group.position.set(x, 0, z);
+                scene.add(this.group);
+            }
+
+            update(targets) {
+                if (targets.length === 0) return;
+
+                // 一番近い敵を探す
+                let closest = null;
+                let minDist = Infinity;
+                targets.forEach(t => {
+                    const d = this.group.position.distanceTo(t.group.position);
+                    if (d < minDist) {
+                        minDist = d;
+                        closest = t;
+                    }
+                });
+
+                if (closest) {
+                    // ターゲットの方向を向く
+                    this.group.lookAt(closest.group.position);
+                    
+                    // 近づく
+                    if (minDist > 1.2) {
+                        this.group.translateZ(this.speed);
+                    } else {
+                        // 攻撃（簡易的な体当たりアニメーション）
+                        this.body.position.y = 0.5 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.5;
+                        closest.hp -= 0.5;
+                    }
+                }
+
+                // ぴょんぴょん跳ねる動き
+                if (minDist > 1.2) {
+                    this.body.position.y = 0.5 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.2;
+                }
+            }
+        }
+
+        const allies = [];
+        const enemies = [];
+
+        // 初期配置
+        allies.push(new Character(0xFFD700, 0, 0)); // 黄色の味方
+
+        function spawnEnemy() {
+            const x = (Math.random() - 0.5) * 20;
+            const z = -20;
+            enemies.push(new Character(0xFF4500, x, z, true)); // 赤色の敵
+        }
+
+        setInterval(() => {
+            if (enemies.length < 3) spawnEnemy();
+        }, 3000);
+
+        // --- クリックで仲間を増やす ---
+        window.addEventListener('mousedown', () => {
+            const x = (Math.random() - 0.5) * 5;
+            const z = (Math.random() - 0.5) * 5;
+            const colors = [0x00BFFF, 0xFF69B4, 0x32CD32];
+            const randColor = colors[Math.floor(Math.random() * colors.length)];
+            allies.push(new Character(randColor, x, z));
+            document.getElementById('allyCount').innerText = allies.length;
+        });
+
+        // --- カメラ位置 ---
+        camera.position.set(0, 15, 15);
+        camera.lookAt(0, 0, 0);
+
+        // --- メインループ ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 味方の更新
+            for (let i = allies.length - 1; i >= 0; i--) {
+                allies[i].update(enemies);
+                if (allies[i].hp <= 0) {
+                    scene.remove(allies[i].group);
+                    allies.splice(i, 1);
+                }
+            }
+
+            // 敵の更新
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                enemies[i].update(allies);
+                if (enemies[i].hp <= 0) {
+                    scene.remove(enemies[i].group);
+                    enemies.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
