@@ -3,14 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kaku-Koro Quest: Beam & Recruit</title>
+    <title>Kaku-Koro Quest: Cooking & Islands</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #7cc47e; font-family: 'Courier New', sans-serif; }
+        body { margin: 0; overflow: hidden; background: #222; font-family: 'Courier New', sans-serif; user-select: none; }
         #ui {
             position: absolute; top: 15px; left: 15px; color: white;
             text-shadow: 2px 2px #333; pointer-events: none; z-index: 10;
         }
+        /* 料理鍋UI */
+        #cooking-ui {
+            position: absolute; top: 15px; right: 15px; text-align: center; z-index: 20;
+        }
+        #pot-btn {
+            width: 80px; height: 80px; background: #eee; border: 4px solid #555;
+            border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 30px; box-shadow: 0 4px 0 #333; transition: 0.1s;
+        }
+        #pot-btn:active { transform: translateY(4px); box-shadow: none; }
+        #cook-progress { width: 80px; height: 10px; background: #444; margin-top: 5px; border-radius: 5px; overflow: hidden; }
+        #cook-bar { width: 0%; height: 100%; background: #ff9800; }
+
         .skill-container {
             position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 12px; z-index: 20;
@@ -21,42 +34,44 @@
             color: white; font-weight: bold; cursor: pointer; font-size: 10px;
             box-shadow: 0 6px 0 rgba(0,0,0,0.2); position: relative;
         }
-        /* スキルカラー */
-        #btn-q { background: #ffeb3b; color: #333; } /* 10まんボルト */
-        #btn-e { background: #8bc34a; }           /* はっぱカッター */
-        #btn-r { background: #ce93d8; }           /* はかいこうせん */
-        
-        .cd-overlay {
-            position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.5);
-            height: 0%; transition: height 0.1s linear; border-radius: 0 0 8px 8px;
-        }
-        #boss-warning {
-            position: absolute; top: 25%; width: 100%; text-align: center;
-            color: #fff; font-size: 45px; font-weight: bold; display: none;
-            text-shadow: 0 0 15px #f44336; z-index: 30;
+        #btn-q { background: #ffeb3b; color: #333; }
+        #btn-e { background: #8bc34a; }
+        #btn-r { background: #ff5722; }
+        .cd-overlay { position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.5); height: 0%; border-radius: 0 0 8px 8px; }
+
+        #msg-overlay {
+            position: absolute; top: 30%; width: 100%; text-align: center;
+            color: #fff; font-size: 40px; font-weight: bold; display: none;
+            text-shadow: 0 0 15px #000; z-index: 100; pointer-events: none;
         }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h1 style="margin:0; font-size: 28px;">KAKU-KORO QUEST</h1>
-        <p style="font-size: 18px; margin: 5px 0;">探索距離: <span id="dist">0</span>m | チーム: <span id="count">3</span>匹</p>
-        <p>HP: <progress id="hp-bar" value="100" max="100" style="width:250px; height:20px;"></progress></p>
+        <h1 style="margin:0; font-size: 24px;">KAKU-KORO QUEST</h1>
+        <p id="island-name" style="color: #ffeb3b; margin: 0;">Island: はじまりの草原</p>
+        <p>探索距離: <span id="dist">0</span>m | チーム: <span id="count">3</span>匹</p>
+        <progress id="hp-bar" value="100" max="100" style="width:200px;"></progress>
     </div>
 
-    <div id="boss-warning">⚠️ BOSS APPEARED ⚠️</div>
+    <div id="cooking-ui">
+        <div id="pot-btn" onclick="tryCook()">🍲</div>
+        <div id="cook-progress"><div id="cook-bar"></div></div>
+        <span style="color:white; font-size:12px;">料理</span>
+    </div>
+
+    <div id="msg-overlay"></div>
 
     <div class="skill-container">
-        <div class="skill-btn" id="btn-q" onclick="useSkill(1)">10まんボルト<br>(Q)<div id="cd1" class="cd-overlay"></div></div>
-        <div class="skill-btn" id="btn-e" onclick="useSkill(2)">はっぱカッター<br>(E)<div id="cd2" class="cd-overlay"></div></div>
-        <div class="skill-btn" id="btn-r" onclick="useSkill(3)">はかいこうせん<br>(R)<div id="cd3" class="cd-overlay"></div></div>
+        <div class="skill-btn" id="btn-q" onclick="useSkill(1)">10まんボルト<div id="cd1" class="cd-overlay"></div></div>
+        <div class="skill-btn" id="btn-e" onclick="useSkill(2)">はっぱカッター<div id="cd2" class="cd-overlay"></div></div>
+        <div class="skill-btn" id="btn-r" onclick="useSkill(3)">はかいこうせん<div id="cd3" class="cd-overlay"></div></div>
     </div>
 
     <script>
         window.onload = () => {
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xa2e0a4);
             const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
             const renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -68,84 +83,80 @@
             sun.castShadow = true;
             scene.add(sun, new THREE.AmbientLight(0xffffff, 0.7));
 
-            // --- Environment ---
-            const floorGroup = new THREE.Group();
-            const floorTile = new THREE.PlaneGeometry(2, 2);
-            for(let x=-15; x<15; x++) {
-                for(let z=-100; z<20; z++) {
-                    const color = (x + z) % 2 === 0 ? 0x7cc47e : 0x86cc88;
-                    const tile = new THREE.Mesh(floorTile, new THREE.MeshStandardMaterial({color}));
-                    tile.position.set(x*2, 0, z*2);
-                    tile.rotation.x = -Math.PI / 2;
-                    tile.receiveShadow = true;
-                    floorGroup.add(tile);
-                }
-            }
-            scene.add(floorGroup);
+            // --- 島のデータ ---
+            const islands = [
+                { name: "はじまりの草原", bg: 0xa2e0a4, floor: 0x7cc47e, tree: 0x43a047 },
+                { name: "カラカラ砂漠", bg: 0xffecb3, floor: 0xffcc80, tree: 0x8d6e63 },
+                { name: "ドクドク火山", bg: 0x424242, floor: 0x212121, tree: 0xd84315 },
+                { name: "ヒエヒエ雪原", bg: 0xe1f5fe, floor: 0xffffff, tree: 0x81d4fa }
+            ];
+            let currentIslandIdx = 0;
 
-            function addObject(type, x, z) {
-                const group = new THREE.Group();
-                if(type === 'tree') {
+            // Environment objects
+            let envObjects = [];
+            const floorMat = new THREE.MeshStandardMaterial({color: islands[0].floor});
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 5000), floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            function updateIslandVisuals() {
+                const data = islands[currentIslandIdx % islands.length];
+                scene.background = new THREE.Color(data.bg);
+                floorMat.color.set(data.floor);
+                document.getElementById('island-name').innerText = "Island: " + data.name;
+                
+                // Clear old trees
+                envObjects.forEach(obj => scene.remove(obj));
+                envObjects = [];
+                for(let i=0; i<60; i++) {
+                    const tree = new THREE.Group();
                     const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.5, 0.8), new THREE.MeshStandardMaterial({color: 0x6d4c41}));
-                    const leaf = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5), new THREE.MeshStandardMaterial({color: 0x43a047}));
-                    leaf.position.y = 2; group.add(trunk, leaf);
-                } else {
-                    const rock = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), new THREE.MeshStandardMaterial({color: 0x9e9e9e}));
-                    group.add(rock);
+                    const leaf = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5), new THREE.MeshStandardMaterial({color: data.tree}));
+                    leaf.position.y = 2; tree.add(trunk, leaf);
+                    tree.position.set((Math.random()-0.5)*60, 0.5, player.mesh.position.z - (i * 15) - 30);
+                    scene.add(tree); envObjects.push(tree);
                 }
-                group.position.set(x, 0.5, z);
-                scene.add(group);
             }
-            for(let i=0; i<60; i++) addObject(Math.random() > 0.5 ? 'tree' : 'rock', (Math.random()-0.5)*50, -i*15);
 
             // --- Entities ---
-            const colors = [0xf44336, 0x2196f3, 0x9c27b0, 0xff9800, 0x00bcd4];
-            
+            const colors = [0xf44336, 0x2196f3, 0x9c27b0, 0xff9800, 0x00bcd4, 0xffffff];
             class Entity {
-                constructor(type, x, z, color) {
+                constructor(type, x, z, color, scale = 1) {
                     this.type = type;
                     this.mesh = new THREE.Group();
                     const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({color}));
                     body.castShadow = true; body.position.y = 0.6;
-                    
                     const eye = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.1), new THREE.MeshStandardMaterial({color: 0x222222}));
                     eye.position.set(-0.35, 0.8, 0.61);
                     const eyeR = eye.clone(); eyeR.position.x = 0.35;
-                    
                     this.mesh.add(body, eye, eyeR);
                     this.mesh.position.set(x, 0, z);
+                    this.mesh.scale.set(scale, scale, scale);
                     scene.add(this.mesh);
 
-                    this.hp = type === 'boss' ? 1200 : 100;
+                    this.hp = type === 'boss' ? 1500 : 100 * scale;
                     this.maxHp = this.hp;
                     this.speed = (type === 'enemy') ? 0.08 : 0.22;
                     this.knockback = new THREE.Vector3();
                 }
-                
                 update() {
                     this.mesh.position.add(this.knockback);
                     this.knockback.multiplyScalar(0.85);
-                    // Jump Animation
                     if(this.isMoving || this.knockback.length() > 0.1) {
                         this.mesh.position.y = Math.abs(Math.sin(Date.now()*0.01)) * 0.4;
                     }
                 }
-
                 takeDamage(dmg, fromPos) {
                     this.hp -= dmg;
                     const dir = new THREE.Vector3().subVectors(this.mesh.position, fromPos).normalize();
-                    this.knockback.addScaledVector(dir, 1.2);
-                    if(this.hp <= 0) this.die();
+                    this.knockback.addScaledVector(dir, 1.5);
+                    if(this.hp <= 0 && !this.dead) this.die();
                 }
-
                 die() {
-                    if(this.type === 'enemy' && Math.random() < 0.25) { // 25%で仲間に！
-                        const c = colors[Math.floor(Math.random()*colors.length)];
-                        allies.push(new Entity('ally', this.mesh.position.x, this.mesh.position.z, c));
-                        document.getElementById('count').innerText = allies.length + 1;
-                    }
-                    scene.remove(this.mesh);
                     this.dead = true;
+                    if(this.type === 'boss') triggerStageClear();
+                    scene.remove(this.mesh);
                 }
             }
 
@@ -155,60 +166,83 @@
             const particles = [];
             const keys = {};
             let cooldowns = [0, 0, 0];
-            let isBoss = false;
+            let cookValue = 0;
+            let isBossActive = false;
 
             window.addEventListener('keydown', e => keys[e.code] = true);
             window.addEventListener('keyup', e => keys[e.code] = false);
 
-            // --- Skills ---
+            // --- 料理（ガチャ）システム ---
+            window.tryCook = () => {
+                if(cookValue < 100) {
+                    showMsg("まだ煮えていないようだ…", "#fff");
+                    return;
+                }
+                cookValue = 0;
+                const c = colors[Math.floor(Math.random()*colors.length)];
+                const isShiny = Math.random() < 0.1;
+                const newAlly = new Entity('ally', player.mesh.position.x, player.mesh.position.z + 5, c, isShiny ? 1.8 : 1);
+                allies.push(newAlly);
+                document.getElementById('count').innerText = allies.length + 1;
+                showMsg(isShiny ? "すごい料理ができた！" : "新しい仲間がやってきた！", isShiny ? "#ffeb3b" : "#fff");
+            };
+
+            function triggerStageClear() {
+                showMsg("STAGE CLEAR!", "#ffeb3b");
+                setTimeout(() => {
+                    currentIslandIdx++;
+                    updateIslandVisuals();
+                    isBossActive = false;
+                    player.mesh.position.set(0, 0, player.mesh.position.z - 50); // 次の島へ少し進む
+                }, 2000);
+            }
+
+            function showMsg(txt, color) {
+                const el = document.getElementById('msg-overlay');
+                el.innerText = txt; el.style.color = color; el.style.display = 'block';
+                setTimeout(() => el.style.display = 'none', 2000);
+            }
+
+            // --- 技（ビーム・カッターなど） ---
             window.useSkill = (id) => {
                 if(cooldowns[id-1] > 0) return;
-                cooldowns[id-1] = id === 3 ? 150 : 60; // ビームは長めのCD
+                cooldowns[id-1] = id === 3 ? 200 : 60;
 
-                if(id === 1) { // 10まんボルト (周囲波状攻撃)
-                    createFx(player.mesh.position, 0xffff00, 15);
-                    enemies.forEach(e => { if(e.mesh.position.distanceTo(player.mesh.position) < 7) e.takeDamage(40, player.mesh.position); });
-                } 
-                else if(id === 2) { // はっぱカッター (前方扇形)
-                    createFx(player.mesh.position, 0x4caf50, 10);
+                if(id === 1) { // Thunderbolt
+                    createFx(player.mesh.position, 0xffff00, 20);
+                    enemies.forEach(e => { if(e.mesh.position.distanceTo(player.mesh.position) < 8) e.takeDamage(50, player.mesh.position); });
+                } else if(id === 2) { // Razor Leaf
+                    createFx(player.mesh.position, 0x4caf50, 15);
                     const forward = new THREE.Vector3(0,0,1).applyQuaternion(player.mesh.quaternion);
                     enemies.forEach(e => {
-                        const toEnemy = new THREE.Vector3().subVectors(e.mesh.position, player.mesh.position);
-                        if(toEnemy.length() < 10 && toEnemy.normalize().dot(forward) > 0.5) e.takeDamage(30, player.mesh.position);
+                        const toE = new THREE.Vector3().subVectors(e.mesh.position, player.mesh.position);
+                        if(toE.length() < 12 && toE.normalize().dot(forward) > 0.4) e.takeDamage(40, player.mesh.position);
                     });
-                }
-                else if(id === 3) { // はかいこうせん (直線ビーム)
-                    const beamGeo = new THREE.BoxGeometry(2, 2, 20);
-                    const beamMat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.8});
-                    const beam = new THREE.Mesh(beamGeo, beamMat);
-                    beam.position.copy(player.mesh.position);
-                    beam.quaternion.copy(player.mesh.quaternion);
-                    beam.translateZ(10);
-                    scene.add(beam);
-                    setTimeout(() => scene.remove(beam), 300);
-
+                } else if(id === 3) { // Hyper Beam
+                    const beam = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 30), new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.7}));
+                    beam.position.copy(player.mesh.position); beam.quaternion.copy(player.mesh.quaternion); beam.translateZ(15);
+                    scene.add(beam); setTimeout(() => scene.remove(beam), 400);
                     enemies.forEach(e => {
-                        const localPos = e.mesh.position.clone().applyMatrix4(new THREE.Matrix4().copy(player.mesh.matrixWorld).invert());
-                        if(Math.abs(localPos.x) < 2 && localPos.z > 0 && localPos.z < 20) e.takeDamage(120, player.mesh.position);
+                        const local = e.mesh.position.clone().applyMatrix4(new THREE.Matrix4().copy(player.mesh.matrixWorld).invert());
+                        if(Math.abs(local.x) < 3 && local.z > 0 && local.z < 30) e.takeDamage(150, player.mesh.position);
                     });
                 }
-            }
+            };
 
             function createFx(pos, color, count) {
                 for(let i=0; i<count; i++) {
-                    const p = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshBasicMaterial({color}));
+                    const p = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshBasicMaterial({color}));
                     p.position.copy(pos);
-                    p.userData = { vel: new THREE.Vector3((Math.random()-0.5), Math.random(), (Math.random()-0.5)), life: 20 };
-                    scene.add(p);
-                    particles.push(p);
+                    p.userData = { vel: new THREE.Vector3((Math.random()-0.5), Math.random(), (Math.random()-0.5)), life: 25 };
+                    scene.add(p); particles.push(p);
                 }
             }
 
-            // --- Main Loop ---
+            // --- メインループ ---
+            updateIslandVisuals();
             function animate() {
                 requestAnimationFrame(animate);
 
-                // Player Move
                 let move = new THREE.Vector3();
                 if(keys['KeyW'] || keys['ArrowUp']) move.z -= 1;
                 if(keys['KeyS'] || keys['ArrowDown']) move.z += 1;
@@ -220,72 +254,58 @@
                     move.normalize();
                     player.mesh.position.addScaledVector(move, player.speed);
                     player.mesh.rotation.y = Math.atan2(move.x, move.z);
+                    cookValue = Math.min(100, cookValue + 0.05); // 移動で料理が進む
                 }
                 player.update();
-                
-                // Key Skills
+                document.getElementById('cook-bar').style.width = cookValue + '%';
+
                 if(keys['KeyQ']) useSkill(1);
                 if(keys['KeyE']) useSkill(2);
                 if(keys['KeyR']) useSkill(3);
 
-                // Allies
                 allies.forEach(a => {
                     a.update();
                     const d = a.mesh.position.distanceTo(player.mesh.position);
-                    if(d > 4) {
-                        a.mesh.lookAt(player.mesh.position);
-                        a.mesh.translateZ(0.25);
-                        a.isMoving = true;
-                    } else a.isMoving = false;
+                    if(d > 4) { a.mesh.lookAt(player.mesh.position); a.mesh.translateZ(0.25); a.isMoving = true; } 
+                    else a.isMoving = false;
                 });
 
-                // Enemies
-                if(!isBoss && enemies.length < 5 && Math.random() < 0.02) {
-                    const c = colors[Math.floor(Math.random()*colors.length)];
-                    enemies.push(new Entity('enemy', (Math.random()-0.5)*40, player.mesh.position.z - 50, c));
+                if(!isBossActive && enemies.length < 5 && Math.random() < 0.02) {
+                    enemies.push(new Entity('enemy', (Math.random()-0.5)*40, player.mesh.position.z - 60, colors[Math.floor(Math.random()*5)]));
                 }
                 enemies.forEach((e, i) => {
-                    e.update();
-                    e.mesh.lookAt(player.mesh.position);
-                    e.mesh.translateZ(e.speed);
-                    if(e.mesh.position.distanceTo(player.mesh.position) < 1.5) player.hp -= 0.5;
+                    e.update(); e.mesh.lookAt(player.mesh.position); e.mesh.translateZ(e.speed);
+                    if(e.mesh.position.distanceTo(player.mesh.position) < 1.5) player.hp -= 0.3;
                     if(e.dead) enemies.splice(i, 1);
                 });
 
-                // Particles
                 for(let i=particles.length-1; i>=0; i--) {
-                    const p = particles[i];
-                    p.position.add(p.userData.vel);
-                    p.userData.life--;
+                    const p = particles[i]; p.position.add(p.userData.vel); p.userData.life--;
                     if(p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
                 }
 
-                // UI
                 const d = Math.floor(Math.abs(player.mesh.position.z));
                 document.getElementById('dist').innerText = d;
                 document.getElementById('hp-bar').value = player.hp;
                 cooldowns = cooldowns.map((v, i) => {
                     const nv = Math.max(0, v - 1);
-                    document.getElementById(`cd${i+1}`).style.height = (nv / (i===2?150:60) * 100) + '%';
+                    document.getElementById(`cd${i+1}`).style.height = (nv / (i===2?200:60) * 100) + '%';
                     return nv;
                 });
 
-                // Boss
-                if(d > 0 && d % 500 === 0 && !isBoss) {
-                    isBoss = true;
-                    enemies.push(new Entity('boss', 0, player.mesh.position.z - 50, 0x222222));
-                    document.getElementById('boss-warning').style.display = 'block';
-                    setTimeout(() => document.getElementById('boss-warning').style.display = 'none', 3000);
-                } else if(isBoss && enemies.length === 0) isBoss = false;
+                if(d > 0 && d % 500 === 0 && !isBossActive) {
+                    isBossActive = true;
+                    enemies.push(new Entity('boss', 0, player.mesh.position.z - 60, 0x000000, 4));
+                    showMsg("BOSS APPEARED!", "#f44336");
+                }
 
-                camera.position.set(player.mesh.position.x, 22, player.mesh.position.z + 22);
+                camera.position.set(player.mesh.position.x, 25, player.mesh.position.z + 25);
                 camera.lookAt(player.mesh.position);
                 renderer.render(scene, camera);
             }
             animate();
             window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
+                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
         };
