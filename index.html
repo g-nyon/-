@@ -3,42 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kaku-Koro Quest: Item Drop Edition</title>
+    <title>Kaku-Koro: Full Auto & Team Formation</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #222; font-family: 'Arial Black', sans-serif; user-select: none; }
         #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px #000; pointer-events: none; z-index: 10; }
         #cooking-ui { position: absolute; top: 15px; right: 15px; text-align: center; z-index: 20; }
-        #pot-btn { width: 70px; height: 70px; background: #eee; border: 4px solid #555; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 30px; box-shadow: 0 4px #999; }
-        #cook-bar-bg { width: 70px; height: 8px; background: #444; margin-top: 5px; border-radius: 4px; overflow: hidden; }
-        #cook-bar { width: 0%; height: 100%; background: #ff9800; transition: width 0.3s; }
+        #pot-btn { width: 70px; height: 70px; background: #eee; border: 4px solid #555; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; box-shadow: 0 4px #999; }
+        #cook-bar-bg { width: 70px; height: 12px; background: #444; margin-top: 8px; border-radius: 6px; overflow: hidden; border: 2px solid white; }
+        #cook-bar { width: 0%; height: 100%; background: linear-gradient(90deg, #ff9800, #ffeb3b); transition: width 0.3s; }
         #skill-bar { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 20; }
-        .skill-slot { width: 65px; height: 65px; border: 3px solid #fff; border-radius: 10px; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; flex-direction: column; color: white; font-size: 8px; cursor: pointer; position: relative; }
-        .cd-overlay { position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.7); height: 0%; border-radius: 0 0 7px 7px; pointer-events: none; }
-        #msg { position: absolute; top: 30%; width: 100%; text-align: center; color: #ffeb3b; font-size: 40px; display: none; text-shadow: 0 0 10px #000; z-index: 100; }
+        .skill-slot { width: 60px; height: 60px; border: 3px solid #fff; border-radius: 10px; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; color: white; font-size: 8px; position: relative; cursor: pointer; }
+        .cd-overlay { position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.7); height: 0%; border-radius: 0 0 7px 7px; }
+        #summon-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0); pointer-events: none; z-index: 100; transition: background 0.5s; display: flex; align-items: center; justify-content: center; }
+        #summon-msg { color: white; font-size: 50px; text-shadow: 0 0 20px #ffeb3b; display: none; transform: scale(0.5); transition: 0.5s; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h2 style="margin:0; color: #ffcb05;">KAKU-KORO QUEST</h2>
+        <h2 style="margin:0; color: #ffcb05;">KAKU-KORO AUTO</h2>
         <p>距離: <span id="dist">0</span>m | 仲間: <span id="team-size">3</span></p>
         <progress id="hp-bar" value="100" max="100" style="width:200px; height: 15px;"></progress>
     </div>
 
     <div id="cooking-ui">
-        <div id="pot-btn" onclick="tryCook()">🍲</div>
+        <div id="pot-btn">🍲</div>
         <div id="cook-bar-bg"><div id="cook-bar"></div></div>
     </div>
 
-    <div id="msg"></div>
+    <div id="summon-overlay"><div id="summon-msg">NEW POKEMON!</div></div>
 
     <div id="skill-bar">
-        <div class="skill-slot" onclick="cast(1)" style="background:#fcd116;">10万ボルト<br>(Q)<div class="cd-overlay" id="cd1"></div></div>
-        <div class="skill-slot" onclick="cast(2)" style="background:#7ac74c;">カッター<br>(E)<div class="cd-overlay" id="cd2"></div></div>
-        <div class="skill-slot" onclick="cast(3)" style="background:#6390f0;">バブル<br>(R)<div class="cd-overlay" id="cd3"></div></div>
-        <div class="skill-slot" onclick="cast(4)" style="background:#ee8130;">火炎放射<br>(F)<div class="cd-overlay" id="cd4"></div></div>
-        <div class="skill-slot" onclick="cast(5)" style="background:#a33ea1;">はかい光線<br>(Space)<div class="cd-overlay" id="cd5"></div></div>
+        <div class="skill-slot" onclick="cast(1)" style="background:#fcd116;">10万ボルト<div class="cd-overlay" id="cd1"></div></div>
+        <div class="skill-slot" onclick="cast(2)" style="background:#7ac74c;">カッター<div class="cd-overlay" id="cd2"></div></div>
+        <div class="skill-slot" onclick="cast(3)" style="background:#6390f0;">バブル<div class="cd-overlay" id="cd3"></div></div>
+        <div class="skill-slot" onclick="cast(4)" style="background:#ee8130;">火炎放射<div class="cd-overlay" id="cd4"></div></div>
+        <div class="skill-slot" onclick="cast(5)" style="background:#a33ea1;">はかい光線<div class="cd-overlay" id="cd5"></div></div>
     </div>
 
     <script>
@@ -56,182 +57,150 @@
             sun.castShadow = true;
             scene.add(new THREE.AmbientLight(0xffffff, 0.7), sun);
 
-            // Ground
             const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 10000), new THREE.MeshStandardMaterial({color: 0x81c784}));
             floor.rotation.x = -Math.PI/2; floor.receiveShadow = true;
             scene.add(floor);
 
-            const enemies = [];
-            const allies = [];
-            const projectiles = [];
-            const particles = [];
-            const items = [];
-            const objects = [];
+            const enemies = [], allies = [], projectiles = [], particles = [], items = [], objects = [];
             const keys = {};
-            let cooldowns = [0, 0, 0, 0, 0];
-            let cookValue = 0;
+            let cooldowns = [0, 0, 0, 0, 0], cookValue = 0, isSummoning = false;
 
-            // --- 共通エフェクト ---
+            // --- ポケモン作成 ---
+            function createPokeMesh(color, isShiny = false) {
+                const group = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({color, emissive: isShiny ? 0x444400 : 0}));
+                body.castShadow = true; body.position.y = 0.6;
+                group.add(body);
+                const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({color: 0x222222}));
+                eye.position.set(-0.3, 0.8, 0.6);
+                const eyeR = eye.clone(); eyeR.position.x = 0.3;
+                group.add(eye, eyeR);
+                return group;
+            }
+
+            // --- エフェクト ---
             function createFx(pos, color, count, size=0.4) {
                 for(let i=0; i<count; i++) {
                     const p = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshBasicMaterial({color}));
                     p.position.copy(pos);
-                    p.userData = { vel: new THREE.Vector3((Math.random()-0.5)*0.3, 0.2+Math.random()*0.3, (Math.random()-0.5)*0.3), life: 25 };
+                    p.userData = { vel: new THREE.Vector3((Math.random()-0.5)*0.4, 0.2+Math.random()*0.4, (Math.random()-0.5)*0.4), life: 20 };
                     scene.add(p); particles.push(p);
                 }
             }
 
-            // --- アイテム(料理素材)クラス ---
-            class MaterialItem {
-                constructor(x, z) {
-                    const colors = [0xff5252, 0x448aff, 0xffeb3b, 0xffffff];
-                    this.mesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({color: colors[Math.floor(Math.random()*colors.length)], emissive: 0x333333}));
-                    this.mesh.position.set(x, 0.5, z);
-                    this.mesh.rotation.set(Math.random(), Math.random(), Math.random());
-                    scene.add(this.mesh);
-                    this.collected = false;
-                }
-                update() {
-                    this.mesh.rotation.y += 0.05;
-                    this.mesh.position.y = 0.5 + Math.sin(Date.now()*0.005) * 0.2;
-                    
-                    const d = this.mesh.position.distanceTo(player.mesh.position);
-                    if(d < 6) { // 引き寄せ
-                        const dir = new THREE.Vector3().subVectors(player.mesh.position, this.mesh.position).normalize();
-                        this.mesh.position.addScaledVector(dir, 0.4);
-                    }
-                    if(d < 1.5 && !this.collected) {
-                        this.collected = true;
-                        cookValue = Math.min(100, cookValue + 15); // アイテムで15%アップ
-                        createFx(this.mesh.position, 0xffffff, 10);
-                        scene.remove(this.mesh);
-                    }
-                }
-            }
-
-            // --- Entity クラス ---
+            // --- Entity ---
             class Entity {
-                constructor(role, x, z, color, isShiny = false) {
+                constructor(role, x, z, color, isShiny = false, slotIdx = 0) {
                     this.role = role;
                     this.isShiny = isShiny;
-                    this.mesh = new THREE.Group();
-                    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshStandardMaterial({color}));
-                    body.castShadow = true; body.position.y = 0.6;
-                    this.mesh.add(body);
-                    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({color: 0x222222}));
-                    eye.position.set(-0.3, 0.8, 0.6);
-                    const eyeR = eye.clone(); eyeR.position.x = 0.3;
-                    this.mesh.add(eye, eyeR);
+                    this.slotIdx = slotIdx;
+                    this.mesh = createPokeMesh(color, isShiny);
                     this.mesh.position.set(x, 0, z);
                     scene.add(this.mesh);
-                    this.hp = role === 'boss' ? 3000 : 150;
+                    this.hp = role === 'boss' ? 3000 : 200;
                     this.dead = false;
                     this.knockback = new THREE.Vector3();
+                    this.autoTimer = Math.random() * 60;
                 }
                 update() {
                     this.mesh.position.add(this.knockback);
-                    this.knockback.multiplyScalar(0.8);
-                    this.mesh.position.y = Math.abs(Math.sin(Date.now()*0.01)) * 0.3;
+                    this.knockback.multiplyScalar(0.85);
+                    this.mesh.position.y = Math.abs(Math.sin(Date.now()*0.01 + this.slotIdx)) * 0.3;
                     if(this.isShiny && Math.random() < 0.1) createFx(this.mesh.position, 0xffff00, 1, 0.2);
+                    
+                    this.autoTimer++;
+                    if(this.autoTimer > 90) { this.autoAttack(); this.autoTimer = 0; }
+                }
+                autoAttack() {
+                    const targets = (this.role === 'enemy' || this.role === 'boss') ? [player, ...allies] : enemies;
+                    let nearest = null, minDist = 15;
+                    targets.forEach(t => {
+                        const d = t.mesh.position.distanceTo(this.mesh.position);
+                        if(d < minDist) { minDist = d; nearest = t; }
+                    });
+                    if(nearest) {
+                        const dir = new THREE.Vector3().subVectors(nearest.mesh.position, this.mesh.position).normalize();
+                        fire(this.mesh.position, dir, this.role === 'enemy' ? 0xff5555 : 0xffffff, 10, this.role);
+                    }
                 }
                 takeDamage(dmg, from) {
                     this.hp -= dmg;
-                    this.knockback.add(new THREE.Vector3().subVectors(this.mesh.position, from).normalize().multiplyScalar(1.5));
+                    this.knockback.add(new THREE.Vector3().subVectors(this.mesh.position, from).normalize().multiplyScalar(1.2));
                     if(this.hp <= 0 && !this.dead) {
                         this.dead = true;
-                        if(this.role === 'enemy' && Math.random() < 0.6) items.push(new MaterialItem(this.mesh.position.x, this.mesh.position.z));
+                        if(this.role === 'enemy') spawnItem(this.mesh.position);
                         scene.remove(this.mesh);
                     }
                 }
             }
 
             const player = new Entity('player', 0, 0, 0xffeb3b);
-            allies.push(new Entity('ally', -2, 2, 0x81d4fa), new Entity('ally', 2, 2, 0xffab91));
+            // 初期仲間
+            allies.push(new Entity('ally', -3, 3, 0x81d4fa, false, 1));
+            allies.push(new Entity('ally', 3, 3, 0xffab91, false, 2));
 
-            // --- 技の処理 ---
-            window.cast = (id) => {
-                if(cooldowns[id-1] > 0) return;
-                cooldowns[id-1] = [60, 60, 90, 110, 250][id-1];
-                
-                const pPos = player.mesh.position.clone();
-                const forward = new THREE.Vector3(0,0,1).applyQuaternion(player.mesh.quaternion); // 正面ベクトル
+            // --- 召喚演出 ---
+            function triggerAutoSummon() {
+                if(isSummoning) return;
+                isSummoning = true;
+                const overlay = document.getElementById('summon-overlay');
+                const msg = document.getElementById('summon-msg');
+                overlay.style.backgroundColor = "rgba(255,255,255,0.8)";
+                msg.style.display = "block";
+                setTimeout(() => { msg.style.transform = "scale(1.2)"; }, 10);
 
-                if(id === 1) { // 10万ボルト
-                    createFx(pPos, 0xffff00, 25);
-                    enemies.forEach(e => { if(e.mesh.position.distanceTo(pPos) < 10) e.takeDamage(60, pPos); });
-                } else if(id === 2) { // カッター
-                    fire(pPos, forward, 0x7ac74c, 45);
-                } else if(id === 3) { // バブル (3方向)
-                    [-0.4, 0, 0.4].forEach(angle => {
-                        const dir = forward.clone().applyAxisAngle(new THREE.Vector3(0,1,0), angle);
-                        fire(pPos, dir, 0x6390f0, 30);
-                    });
-                } else if(id === 4) { // 火炎放射 (正面に連続)
-                    let count = 0;
-                    const itv = setInterval(() => {
-                        const randDir = forward.clone().applyAxisAngle(new THREE.Vector3(0,1,0), (Math.random()-0.5)*0.4);
-                        fire(player.mesh.position, randDir, 0xff5722, 15);
-                        if(++count > 12) clearInterval(itv);
-                    }, 50);
-                } else if(id === 5) { // はかいこうせん
-                    const beam = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 40), new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.8}));
-                    beam.position.copy(pPos);
-                    beam.quaternion.copy(player.mesh.quaternion);
-                    beam.translateZ(20); // 正面にずらす
-                    scene.add(beam);
-                    setTimeout(() => scene.remove(beam), 500);
-                    enemies.forEach(e => {
-                        const toEnemy = new THREE.Vector3().subVectors(e.mesh.position, pPos);
-                        const dist = toEnemy.length();
-                        if(dist < 40 && toEnemy.normalize().dot(forward) > 0.95) e.takeDamage(250, pPos);
-                    });
-                }
-            };
+                setTimeout(() => {
+                    const isShiny = Math.random() < 0.15;
+                    const c = isShiny ? 0xffffff : [0x81d4fa, 0xffab91, 0xce93d8, 0xa5d6a7][Math.floor(Math.random()*4)];
+                    const newAlly = new Entity('ally', player.mesh.position.x, player.mesh.position.z - 5, c, isShiny, allies.length + 1);
+                    allies.push(newAlly);
+                    createFx(newAlly.mesh.position, 0xffffff, 50, 0.6);
+                    document.getElementById('team-size').innerText = allies.length + 1;
+                    
+                    overlay.style.backgroundColor = "rgba(255,255,255,0)";
+                    msg.style.transform = "scale(0.5)";
+                    setTimeout(() => { msg.style.display = "none"; isSummoning = false; cookValue = 0; }, 500);
+                }, 1500);
+            }
 
-            function fire(from, dir, color, dmg) {
-                const p = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), new THREE.MeshBasicMaterial({color}));
-                p.position.copy(from).addScaledVector(dir, 1);
-                p.userData = { vel: dir.clone().multiplyScalar(0.8), dmg, life: 60 };
+            function fire(from, dir, color, dmg, ownerRole) {
+                const p = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), new THREE.MeshBasicMaterial({color}));
+                p.position.copy(from);
+                p.userData = { vel: dir.clone().multiplyScalar(0.7), dmg, life: 60, ownerRole };
                 scene.add(p); projectiles.push(p);
             }
 
-            // --- 環境オブジェクト ---
-            function spawnEnv(z) {
-                const group = new THREE.Group();
-                if(Math.random() > 0.4) {
-                    const trunk = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshStandardMaterial({color: 0x6d4c41}));
-                    const leaf = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5), new THREE.MeshStandardMaterial({color: 0x43a047}));
-                    leaf.position.y = 2; group.add(trunk, leaf);
-                } else {
-                    const rock = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, 2), new THREE.MeshStandardMaterial({color: 0x9e9e9e}));
-                    group.add(rock);
-                }
-                group.position.set((Math.random()-0.5)*50, 0.5, z);
-                scene.add(group); objects.push(group);
+            function spawnItem(pos) {
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({color: 0x00ffff, emissive: 0x005555}));
+                mesh.position.copy(pos); scene.add(mesh);
+                items.push({mesh, collected: false});
             }
 
-            // --- メインループ ---
+            window.cast = (id) => {
+                if(cooldowns[id-1] > 0) return;
+                cooldowns[id-1] = [60, 60, 90, 110, 250][id-1];
+                const pPos = player.mesh.position.clone();
+                const forward = new THREE.Vector3(0,0,1).applyQuaternion(player.mesh.quaternion);
+                if(id === 1) { createFx(pPos, 0xffff00, 20); enemies.forEach(e => { if(e.mesh.position.distanceTo(pPos)<10) e.takeDamage(60, pPos); }); }
+                else if(id === 2) fire(pPos, forward, 0x7ac74c, 40, 'player');
+                else if(id === 3) [-0.3, 0, 0.3].forEach(a => fire(pPos, forward.clone().applyAxisAngle(new THREE.Vector3(0,1,0), a), 0x6390f0, 25, 'player'));
+                else if(id === 4) { let c=0; const it = setInterval(() => { fire(player.mesh.position, forward.clone().applyAxisAngle(new THREE.Vector3(0,1,0), (Math.random()-0.5)*0.3), 0xff5722, 12, 'player'); if(++c>10) clearInterval(it); }, 50); }
+                else if(id === 5) {
+                    const beam = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 40), new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.8}));
+                    beam.position.copy(pPos); beam.quaternion.copy(player.mesh.quaternion); beam.translateZ(20);
+                    scene.add(beam); setTimeout(()=>scene.remove(beam), 500);
+                    enemies.forEach(e => { if(e.mesh.position.distanceTo(pPos)<40 && new THREE.Vector3().subVectors(e.mesh.position, pPos).normalize().dot(forward)>0.9) e.takeDamage(200, pPos); });
+                }
+            };
+
             window.addEventListener('keydown', e => {
                 keys[e.code] = true;
-                if(e.code === 'KeyQ') cast(1); if(e.code === 'KeyE') cast(2);
-                if(e.code === 'KeyR') cast(3); if(e.code === 'KeyF') cast(4);
-                if(e.code === 'Space') cast(5);
+                if(e.code==='KeyQ') cast(1); if(e.code==='KeyE') cast(2); if(e.code==='KeyR') cast(3); if(e.code==='KeyF') cast(4); if(e.code==='Space') cast(5);
             });
             window.addEventListener('keyup', e => keys[e.code] = false);
 
-            window.tryCook = () => {
-                if(cookValue < 100) return;
-                cookValue = 0;
-                const isShiny = Math.random() < 0.2;
-                allies.push(new Entity('ally', player.mesh.position.x, player.mesh.position.z+3, isShiny?0xffffff:0xce93d8, isShiny));
-                document.getElementById('team-size').innerText = allies.length + 1;
-                const m = document.getElementById('msg'); m.innerText = isShiny ? "✨ SHINY ALLY! ✨" : "NEW ALLY!";
-                m.style.display='block'; setTimeout(()=>m.style.display='none', 2000);
-            };
-
             function animate() {
                 requestAnimationFrame(animate);
-
                 let move = new THREE.Vector3();
                 if(keys['KeyW'] || keys['ArrowUp']) move.z -= 1;
                 if(keys['KeyS'] || keys['ArrowDown']) move.z += 1;
@@ -239,55 +208,68 @@
                 if(keys['KeyD'] || keys['ArrowRight']) move.x += 1;
 
                 if(move.length() > 0) {
-                    move.normalize();
-                    player.mesh.position.addScaledVector(move, 0.25);
+                    move.normalize(); player.mesh.position.addScaledVector(move, 0.25);
                     player.mesh.rotation.y = Math.atan2(move.x, move.z);
                     cookValue = Math.min(100, cookValue + 0.05);
                 }
                 player.update();
 
-                // 味方AI
-                allies.forEach(a => {
+                // 自動召喚チェック
+                if(cookValue >= 100) triggerAutoSummon();
+
+                // 仲間AI: 陣形維持と重なり防止
+                allies.forEach((a, i) => {
                     a.update();
-                    const dist = a.mesh.position.distanceTo(player.mesh.position);
-                    if(dist > 5) {
-                        a.mesh.lookAt(player.mesh.position);
-                        a.mesh.translateZ(0.24);
+                    // スロットごとのオフセット位置（扇状）
+                    const angle = (i - (allies.length-1)/2) * 0.8;
+                    const offset = new THREE.Vector3(Math.sin(angle)*4, 0, Math.cos(angle)*4 + 2);
+                    const targetPos = player.mesh.position.clone().add(offset);
+                    
+                    const dist = a.mesh.position.distanceTo(targetPos);
+                    if(dist > 0.5) {
+                        a.mesh.lookAt(targetPos);
+                        a.mesh.translateZ(Math.min(dist, 0.25));
+                    } else {
+                        a.mesh.rotation.y = player.mesh.rotation.y;
                     }
                 });
 
                 // スポーン
-                if(enemies.length < 6 && Math.random() < 0.03) enemies.push(new Entity('enemy', (Math.random()-0.5)*40, player.mesh.position.z - 70, 0xef5350));
-                if(Math.random() < 0.05) spawnEnv(player.mesh.position.z - 80);
+                if(enemies.length < 6 && Math.random() < 0.03) enemies.push(new Entity('enemy', (Math.random()-0.5)*40, player.mesh.position.z-70, 0xef5350));
+                if(Math.random() < 0.05) {
+                    const obj = new THREE.Mesh(new THREE.BoxGeometry(2, Math.random()*3+1, 2), new THREE.MeshStandardMaterial({color: 0x43a047}));
+                    obj.position.set((Math.random()-0.5)*60, 1, player.mesh.position.z-80); scene.add(obj); objects.push(obj);
+                }
 
-                // 更新 & 掃除
-                [enemies, items, projectiles, objects].forEach(list => {
+                // 弾丸 & 判定
+                for(let i=projectiles.length-1; i>=0; i--) {
+                    const p = projectiles[i]; p.position.add(p.userData.vel); p.userData.life--;
+                    const targets = p.userData.ownerRole === 'enemy' ? [player, ...allies] : enemies;
+                    targets.forEach(t => { if(!t.dead && t.mesh.position.distanceTo(p.position) < 2) { t.takeDamage(p.userData.dmg, p.position); p.userData.life=0; } });
+                    if(p.userData.life<=0) { scene.remove(p); projectiles.splice(i, 1); }
+                }
+
+                // アイテム & 敵の掃除
+                [enemies, items, objects].forEach(list => {
                     for(let i=list.length-1; i>=0; i--) {
-                        const o = list[i];
-                        const pos = o.mesh ? o.mesh.position : o.position;
-                        if(o.update) o.update();
+                        const o = list[i]; const pos = o.mesh ? o.mesh.position : o.position;
                         if(o instanceof Entity) {
-                            o.mesh.lookAt(player.mesh.position); o.mesh.translateZ(0.08);
-                            if(o.mesh.position.distanceTo(player.mesh.position) < 1.5) player.hp -= 0.2;
+                            o.update(); o.mesh.lookAt(player.mesh.position); o.mesh.translateZ(0.08);
+                            if(o.mesh.position.distanceTo(player.mesh.position)<1.5) player.hp-=0.2;
+                        } else if(o.mesh) { // Item
+                            if(o.mesh.position.distanceTo(player.mesh.position)<6) o.mesh.position.addScaledVector(new THREE.Vector3().subVectors(player.mesh.position, o.mesh.position).normalize(), 0.4);
+                            if(o.mesh.position.distanceTo(player.mesh.position)<1.5) { o.collected=true; cookValue=Math.min(100, cookValue+15); createFx(o.mesh.position, 0x00ffff, 10); }
                         }
-                        if(pos.z > player.mesh.position.z + 40 || o.dead || o.collected || (o.userData && o.userData.life <= 0)) {
-                            scene.remove(o.mesh || o);
-                            list.splice(i, 1);
-                        }
+                        if(pos.z > player.mesh.position.z+40 || o.dead || o.collected) { scene.remove(o.mesh || o); list.splice(i, 1); }
                     }
                 });
 
-                // 弾丸判定
-                projectiles.forEach(p => {
-                    p.position.add(p.userData.vel); p.userData.life--;
-                    enemies.forEach(e => { if(e.mesh.position.distanceTo(p.position) < 2) { e.takeDamage(p.userData.dmg, p.position); p.userData.life = 0; } });
-                });
                 for(let i=particles.length-1; i>=0; i--) {
                     const p = particles[i]; p.position.add(p.userData.vel); p.userData.life--;
-                    if(p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
+                    if(p.userData.life<=0) { scene.remove(p); particles.splice(i, 1); }
                 }
 
-                // UI
+                // UI更新
                 document.getElementById('dist').innerText = Math.floor(Math.abs(player.mesh.position.z));
                 document.getElementById('hp-bar').value = player.hp;
                 document.getElementById('cook-bar').style.width = cookValue + '%';
